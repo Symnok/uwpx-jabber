@@ -1,0 +1,41 @@
+﻿<Application x:Class="UWP_XMPP_Client.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="using:Microsoft.Toolkit.Uwp.UI.Controls">
+    <Application.Resources>
+        <SolidColorBrush x:Key="PresenceOnline"
+                         Opacity="0.9"
+                         Color="#54A81B"/>
+        <SolidColorBrush x:Key="PresenceChat"
+                         Opacity="0.9"
+                         Color="White"/>
+        <SolidColorBrush x:Key="PresenceAway"
+                         Opacity="0.9"
+                         Color="#EB8C10"/>
+        <SolidColorBrush x:Key="PresenceXa"
+                         Opacity="0.9"
+                         Color="#EB4910"/>
+        <SolidColorBrush x:Key="PresenceDnd"
+                         Opacity="0.9"
+                         Color="#A21025"/>
+        <SolidColorBrush x:Key="PresenceUnavailable"
+                         Opacity="0.9"
+                         Color="#4C4A4B"/>
+
+        <SolidColorBrush x:Key="SpeechBubbleBackgroundDarkBrush"
+                         Opacity="0.9"
+                         Color="{ThemeResource SystemAccentColorDark3}"/>
+        <SolidColorBrush x:Key="SpeechBubbleBackgroundLightBrush"
+                         Opacity="0.9"
+                         Color="{ThemeResource SystemAccentColorDark1}"/>
+        <SolidColorBrush x:Key="SpeechBubbleBackgroundInfoBrush"
+                         Opacity="0.9"
+                         Color="#4C4A48"/>
+
+        <Style TargetType="controls:MasterDetailsView">
+            <Setter Property="CompactModeThresholdWidth" Value="640"/>
+            <Setter Property="MasterPaneWidth" Value="321"/>
+        </Style>
+    </Application.Resources>
+
+</Application>
