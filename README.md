@@ -1,4 +1,4 @@
-# UWPX — Windows 10 Mobile build
+# UWPX Jabber — Jabber/XMPP client for Windows 10 Mobile
 
 An XMPP / Jabber client for **Windows 10 Mobile**, based on
 [UWPX](https://github.com/UWPX/UWPX-Client).
