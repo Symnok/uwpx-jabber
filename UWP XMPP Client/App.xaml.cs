@@ -12,15 +12,17 @@ using System.Threading.Tasks;
 using Logging;
 using Microsoft.AppCenter.Push;
 using Microsoft.AppCenter.Crashes;
+using Microsoft.AppCenter.Analytics;
 using Microsoft.HockeyApp;
 using UWP_XMPP_Client.Dialogs;
 using Windows.ApplicationModel.Core;
 using Windows.UI.Core;
-using Data_Manager2.Classes.ToastActivation; 
+using Data_Manager2.Classes.ToastActivation;
 using Windows.UI.Notifications;
 using Data_Manager2.Classes.DBTables;
 using System.Text;
-using Microsoft.AppCenter.Analytics;
+using Windows.ApplicationModel.Background;
+//using Microsoft.AppCenter.Analytics;
 
 namespace UWP_XMPP_Client
 {
@@ -81,6 +83,19 @@ namespace UWP_XMPP_Client
             this.Suspending += OnSuspending;
             this.Resuming += App_Resuming;
             this.UnhandledException += App_UnhandledException;
+
+            // Application.UnhandledException only ever sees a stackless
+            // System.Exception for errors that start in the WinRT/XAML layer,
+            // which is why every RPC_E_WRONG_THREAD report so far has had
+            // Stack=[null] and no way to locate it. These two see more:
+            //
+            //  - UnhandledErrorDetected fires at the WinRT level and can hand
+            //    back the ORIGINAL error object (with its stack) via Propagate().
+            //  - UnobservedTaskException catches anything that died inside a
+            //    fire-and-forget Task, which App.UnhandledException never gets
+            //    in a usable form.
+            CoreApplication.UnhandledErrorDetected += CoreApplication_UnhandledErrorDetected;
+            TaskScheduler.UnobservedTaskException += TaskScheduler_UnobservedTaskException;
 
             // Perform App update tasks if necessary:
             AppUpdateHandler.onAppStart();
@@ -166,6 +181,7 @@ namespace UWP_XMPP_Client
             // Register background tasks:
             Logger.Info("Registering background tasks...");
             await BackgroundTaskHelper.registerToastBackgroundTaskAsync();
+            await BackgroundTaskHelper.registerCatchUpTaskAsync();
             Logger.Info("Finished registering background tasks.");
 
             // Init all db managers to force event subscriptions:
@@ -205,7 +221,7 @@ namespace UWP_XMPP_Client
                 Window.Current.Content = rootFrame;
             }
 
-            if(args is ProtocolActivatedEventArgs protocolActivationArgs)
+            if (args is ProtocolActivatedEventArgs protocolActivationArgs)
             {
                 Logger.Info("App activated by protocol activation with: " + protocolActivationArgs.Uri.ToString());
 
@@ -225,29 +241,26 @@ namespace UWP_XMPP_Client
             else if (args is ToastNotificationActivatedEventArgs toastActivationArgs)
             {
                 Logger.Info("App activated by toast with: " + toastActivationArgs.Argument);
-                // If empty args, no specific action (just launch the app)
-                if (string.IsNullOrEmpty(toastActivationArgs.Argument))
+
+                // A toast tap only brings the app up on its main screen - we
+                // deliberately do NOT open the chat the toast belongs to.
+                // Opening a specific chat from here means either navigating to a
+                // second ChatPage (the old one stays alive and subscribed to
+                // every ChatDBManager/MUCDBManager event) or mutating the
+                // already loaded list from the activation callback, both of
+                // which caused crashes/freezes on activation.
+                if (rootFrame.Content == null)
                 {
-                    if (rootFrame.Content == null)
+                    if (!Settings.getSettingBoolean(SettingsConsts.INITIALLY_STARTED))
                     {
-                        if (!Settings.getSettingBoolean(SettingsConsts.INITIALLY_STARTED))
-                        {
-                            rootFrame.Navigate(typeof(AddAccountPage), "App.xaml.cs");
-                        }
-                        else
-                        {
-                            rootFrame.Navigate(typeof(ChatPage), "App.xaml.cs");
-                        }
+                        rootFrame.Navigate(typeof(AddAccountPage), "App.xaml.cs");
+                    }
+                    else
+                    {
+                        rootFrame.Navigate(typeof(ChatPage), "App.xaml.cs");
                     }
                 }
-                else
-                {
-                    rootFrame.Navigate(typeof(ChatPage), ToastActivationArgumentParser.parseArguments(toastActivationArgs.Argument));
-                }
-                if (rootFrame.BackStack.Count == 0)
-                {
-                    rootFrame.BackStack.Add(new PageStackEntry(typeof(ChatPage), null, null));
-                }
+                Logger.Info("Toast activation handled - app brought to the main screen.");
             }
             else if (args is LaunchActivatedEventArgs launchActivationArgs)
             {
@@ -285,64 +298,135 @@ namespace UWP_XMPP_Client
             RootTheme = theme;
 
             Window.Current.Activate();
+            Logger.Info("Window activated.");
 
             // Connect to all clients:
             ConnectionHandler.INSTANCE.connectAll();
+
+            BackgroundService.IsInForeground = true;
+
+            // Establish the always-on background session now, in the FOREGROUND
+            // and on the UI thread — this is where ExtendedExecutionSession and
+            // the location subscription reliably start (and the location icon
+            // appears). It is HELD across suspend/resume; OnSuspending only needs
+            // to start the whitespace ping, not create the session in the fragile
+            // suspend window. Location is already granted, so no prompt appears.
+            // Only start it once we actually have an account (past registration).
+            if (Settings.getSettingBoolean(SettingsConsts.INITIALLY_STARTED))
+            {
+                try
+                {
+                    Logger.Info("Starting background keep-alive...");
+                    bool started = await BackgroundService.Instance.StartKeepAliveAsync();
+                    Logger.Info("Background keep-alive start returned: " + started);
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error("Failed to start background keep-alive on launch.", ex);
+                }
+            }
+            Logger.Info("Activation/launch handling finished.");
         }
 
         #endregion
 
         #region --Misc Methods (Protected)--
-        protected override void OnBackgroundActivated(BackgroundActivatedEventArgs args)
+        protected override async void OnBackgroundActivated(BackgroundActivatedEventArgs args)
         {
             var deferral = args.TaskInstance.GetDeferral();
-
-            switch (args.TaskInstance.Task.Name)
+            try
             {
-                case BackgroundTaskHelper.TOAST_BACKGROUND_TASK_NAME:
-                    ToastNotificationActionTriggerDetail details = args.TaskInstance.TriggerDetails as ToastNotificationActionTriggerDetail;
-                    if (details != null)
-                    {
-                        initLogLevel();
 
-                        string arguments = details.Argument;
-                        var userInput = details.UserInput;
+                switch (args.TaskInstance.Task.Name)
+                {
+                    case BackgroundTaskHelper.CATCH_UP_TASK_NAME:
+                        await runCatchUpAsync(args.TaskInstance);
+                        break;
 
-                        Logger.Debug("App activated in background through toast with: " + arguments);
-                        AbstractToastActivation abstractToastActivation = ToastActivationArgumentParser.parseArguments(arguments);
+                    case BackgroundTaskHelper.TOAST_BACKGROUND_TASK_NAME:
+                        ToastNotificationActionTriggerDetail details = args.TaskInstance.TriggerDetails as ToastNotificationActionTriggerDetail;
+                        if (details != null)
+                        {
+                            initLogLevel();
 
-                        if (abstractToastActivation is MarkChatAsReadToastActivation markChatAsRead)
-                        {
-                            ToastHelper.removeToastGroup(markChatAsRead.CHAT_ID);
-                            ChatDBManager.INSTANCE.markAllMessagesAsRead(markChatAsRead.CHAT_ID);
-                        }
-                        else if (abstractToastActivation is MarkMessageAsReadToastActivation markMessageAsRead)
-                        {
-                            ChatDBManager.INSTANCE.markMessageAsRead(markMessageAsRead.CHAT_MESSAGE_ID);
-                        }
-                        else if (abstractToastActivation is SendReplyToastActivation sendReply)
-                        {
-                            ChatTable chat = ChatDBManager.INSTANCE.getChat(sendReply.CHAT_ID);
-                            if (chat != null && userInput[ToastHelper.TEXT_BOX_ID] != null)
+                            string arguments = details.Argument;
+                            var userInput = details.UserInput;
+
+                            Logger.Debug("App activated in background through toast with: " + arguments);
+                            AbstractToastActivation abstractToastActivation = ToastActivationArgumentParser.parseArguments(arguments);
+
+                            if (abstractToastActivation is MarkChatAsReadToastActivation markChatAsRead)
                             {
-                                if (isRunning)
+                                ToastHelper.removeToastGroup(markChatAsRead.CHAT_ID);
+                                ChatDBManager.INSTANCE.markAllMessagesAsRead(markChatAsRead.CHAT_ID);
+                            }
+                            else if (abstractToastActivation is MarkMessageAsReadToastActivation markMessageAsRead)
+                            {
+                                ChatDBManager.INSTANCE.markMessageAsRead(markMessageAsRead.CHAT_MESSAGE_ID);
+                            }
+                            else if (abstractToastActivation is SendReplyToastActivation sendReply)
+                            {
+                                ChatTable chat = ChatDBManager.INSTANCE.getChat(sendReply.CHAT_ID);
+                                if (chat != null && userInput[ToastHelper.TEXT_BOX_ID] != null)
                                 {
+                                    if (isRunning)
+                                    {
 
-                                }
-                                else
-                                {
+                                    }
+                                    else
+                                    {
 
+                                    }
                                 }
                             }
                         }
-                    }
-                    break;
+                        break;
 
-                default:
-                    break;
+                    default:
+                        break;
+                }
+
             }
+            finally
+            {
+                deferral.Complete();
+            }
+        }
 
-            deferral.Complete();
+        // How long to stay awake draining the connection on a catch-up wake.
+        private const int CATCH_UP_DRAIN_SECONDS = 20;
+
+        private async System.Threading.Tasks.Task runCatchUpAsync(IBackgroundTaskInstance taskInstance)
+        {
+            initLogLevel();
+            Logger.Info("Catch-up task fired.");
+
+            bool cancelled = false;
+            taskInstance.Canceled += (s, reason) =>
+            {
+                cancelled = true;
+                Logger.Info("Catch-up cancelled: " + reason);
+            };
+
+            try
+            {
+                // Reconnect every account; incoming stanzas take the normal path
+                // and raise their usual toasts.
+                ConnectionHandler.INSTANCE.connectAll();
+
+                // Stay awake briefly so sockets connect and drain queued messages
+                // before the deferral completes and we are suspended again.
+                for (int i = 0; i < CATCH_UP_DRAIN_SECONDS && !cancelled; i++)
+                {
+                    await System.Threading.Tasks.Task.Delay(1000);
+                }
+
+                Logger.Info("Catch-up drain complete.");
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("Catch-up run failed.", ex);
+            }
         }
 
         protected async override void OnLaunched(LaunchActivatedEventArgs args)
@@ -361,19 +445,43 @@ namespace UWP_XMPP_Client
         private async void OnSuspending(object sender, SuspendingEventArgs e)
         {
             isRunning = false;
+            BackgroundService.IsInForeground = false;
 
             var deferral = e.SuspendingOperation.GetDeferral();
-            // TODO re-implement transfer socket ownership:
-            //await ConnectionHandler.INSTANCE.transferSocketOwnershipAsync();
-
-            // Disconnect all clients:
-            await ConnectionHandler.INSTANCE.disconnectAllAsync();
-            deferral.Complete();
+            try
+            {
+                // ALWAYS close the XMPP streams cleanly before we go away.
+                //
+                // The keep-alive session cannot be relied on to hold the sockets:
+                // the OS revokes the LocationTracking session under SystemPolicy
+                // within seconds on this hardware (see BackgroundService), and the
+                // whitespace ping is disabled. Suspending without sending
+                // </stream:stream> leaves a ghost session on the server bound to
+                // our resource, which then fights the next connection attempt for
+                // as long as the server keeps it around.
+                //
+                // Background delivery is the catch-up TimeTrigger task, not a
+                // socket held across suspend.
+                await BackgroundService.Instance.RequestGraceWindowAsync();
+                await ConnectionHandler.INSTANCE.disconnectAllAsync();
+            }
+            finally
+            {
+                deferral.Complete();
+            }
         }
 
         private void App_Resuming(object sender, object e)
         {
-            // Connect to all clients:
+            BackgroundService.IsInForeground = true;
+
+            // Stop background-only machinery immediately — the ping must never
+            // run in the foreground (this is what prevents the UI slowdown).
+            XmppKeepAlive.Instance.Stop();
+            BackgroundService.Instance.ReleaseGraceWindow();
+
+            // No-op for already-connected accounts (always-on mode); reconnects
+            // any that dropped (fallback mode).
             ConnectionHandler.INSTANCE.connectAll();
             isRunning = true;
         }
@@ -406,7 +514,12 @@ namespace UWP_XMPP_Client
             // Show push dialog:
             if (e.CustomData.TryGetValue("markdown", out string markdownText))
             {
-                await CoreApplication.MainView.CoreWindow.Dispatcher.RunAsync(CoreDispatcherPriority.Normal, async () =>
+                // CoreApplication.MainView.Dispatcher, not
+                // MainView.CoreWindow.Dispatcher: reading .CoreWindow from a
+                // background thread (this handler is one) throws
+                // RPC_E_WRONG_THREAD. The CoreApplicationView's own Dispatcher
+                // is agile.
+                await CoreApplication.MainView.Dispatcher.RunAsync(CoreDispatcherPriority.Normal, async () =>
                 {
                     AppCenterPushDialog dialog = new AppCenterPushDialog(e.Title, markdownText);
                     await UiUtils.showDialogAsyncQueue(dialog);
@@ -416,7 +529,126 @@ namespace UWP_XMPP_Client
 
         private void App_UnhandledException(object sender, UnhandledExceptionEventArgs e)
         {
-            Logger.Error("Unhanded exception: ", e.Exception);
+            // .NET Native (Release) often strips e.Exception's message, leaving the
+            // log blank. e.Message (the event args' own string) usually survives,
+            // so log both plus the exception type and full ToString().
+            string type = "null";
+            string exStr = "null";
+            try
+            {
+                if (e.Exception != null)
+                {
+                    type = e.Exception.GetType().FullName;
+                    exStr = e.Exception.ToString();
+                }
+            }
+            catch { }
+
+            string stack = "null";
+            string inner = "null";
+            try
+            {
+                if (e.Exception != null)
+                {
+                    stack = e.Exception.StackTrace ?? "null";
+
+                    StringBuilder innerBuilder = new StringBuilder();
+                    Exception cur = e.Exception.InnerException;
+                    while (cur != null)
+                    {
+                        innerBuilder.Append(cur.GetType().FullName).Append(": ").Append(cur.Message)
+                                    .Append(" @ ").Append(cur.StackTrace ?? "no stack").Append(" || ");
+                        cur = cur.InnerException;
+                    }
+                    if (innerBuilder.Length > 0)
+                    {
+                        inner = innerBuilder.ToString();
+                    }
+                }
+            }
+            catch { }
+
+            string detail = "Message=[" + e.Message + "] Type=[" + type + "] Ex=[" + exStr + "]"
+                            + " Stack=[" + stack + "] Inner=[" + inner + "]";
+            Logger.Error("Unhanded exception: " + detail, e.Exception);
+        }
+
+        /// <summary>
+        /// Fires for errors the WinRT layer reports, before/instead of
+        /// Application.UnhandledException getting anything useful.
+        /// Propagate() rethrows the ORIGINAL error on this thread, which is the
+        /// only way to see its real type and stack trace - the exception object
+        /// handed to Application.UnhandledException for a WinRT-originated
+        /// error has neither.
+        /// </summary>
+        private void CoreApplication_UnhandledErrorDetected(object sender, UnhandledErrorDetectedEventArgs e)
+        {
+            try
+            {
+                if (e.UnhandledError == null || e.UnhandledError.Handled)
+                {
+                    return;
+                }
+                e.UnhandledError.Propagate();
+            }
+            catch (Exception ex)
+            {
+                // Propagate() marks the error handled, so swallowing it here
+                // keeps the app alive. That is deliberate while we are hunting
+                // this down: the log line below is worth more than the crash,
+                // and the app may well carry on fine.
+                Logger.Error("CoreApplication unhandled error: " + describeException(ex), ex);
+            }
+        }
+
+        /// <summary>
+        /// Catches exceptions from fire-and-forget Tasks. Those never reach
+        /// Application.UnhandledException as themselves - they surface later,
+        /// stripped of their stack, when the Task is collected.
+        /// </summary>
+        private void TaskScheduler_UnobservedTaskException(object sender, UnobservedTaskExceptionEventArgs e)
+        {
+            try
+            {
+                Logger.Error("Unobserved task exception: " + describeException(e.Exception), e.Exception);
+                e.SetObserved();
+            }
+            catch { }
+        }
+
+        /// <summary>
+        /// Type, message, stack and the full InnerException chain of the given
+        /// exception, on one line, never throwing.
+        /// </summary>
+        private static string describeException(Exception ex)
+        {
+            if (ex == null)
+            {
+                return "null";
+            }
+
+            StringBuilder builder = new StringBuilder();
+            try
+            {
+                builder.Append("Type=[").Append(ex.GetType().FullName).Append(']')
+                       .Append(" Message=[").Append(ex.Message).Append(']')
+                       .Append(" Stack=[").Append(ex.StackTrace ?? "null").Append(']');
+
+                Exception cur = ex.InnerException;
+                if (cur != null)
+                {
+                    builder.Append(" Inner=[");
+                    while (cur != null)
+                    {
+                        builder.Append(cur.GetType().FullName).Append(": ").Append(cur.Message)
+                               .Append(" @ ").Append(cur.StackTrace ?? "no stack").Append(" || ");
+                        cur = cur.InnerException;
+                    }
+                    builder.Append(']');
+                }
+            }
+            catch { }
+            return builder.ToString();
         }
 
         #endregion

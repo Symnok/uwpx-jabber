@@ -52,12 +52,22 @@ namespace UWP_XMPP_Client.Classes
                 await contentDialogShowRequest.Task;
             }
 
-            contentDialogShowRequest = new TaskCompletionSource<ContentDialog>();
-            var result = await dialog.ShowAsync();
-            contentDialogShowRequest.SetResult(dialog);
-            contentDialogShowRequest = null;
-
-            return result;
+            // ShowAsync() throws if another ContentDialog is already open, which
+            // on W10M happens easily (e.g. a dialog is up when the app gets
+            // activated by a toast). Without the finally, the queue slot was
+            // never released and its TaskCompletionSource never completed, so
+            // EVERY later dialog blocked forever on the loop above.
+            TaskCompletionSource<ContentDialog> request = new TaskCompletionSource<ContentDialog>();
+            contentDialogShowRequest = request;
+            try
+            {
+                return await dialog.ShowAsync();
+            }
+            finally
+            {
+                contentDialogShowRequest = null;
+                request.TrySetResult(dialog);
+            }
         }
 
         public static void setBackgroundImage(ImageEx imgControl)

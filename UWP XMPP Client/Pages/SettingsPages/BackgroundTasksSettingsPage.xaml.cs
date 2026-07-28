@@ -1,4 +1,4 @@
-﻿using Data_Manager2.Classes;
+using Data_Manager2.Classes;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
 
@@ -6,19 +6,6 @@ namespace UWP_XMPP_Client.Pages.SettingsPages
 {
     public sealed partial class BackgroundTasksSettingsPage : Page
     {
-        //--------------------------------------------------------Attributes:-----------------------------------------------------------------\\
-        #region --Attributes--
-
-
-        #endregion
-        //--------------------------------------------------------Constructor:----------------------------------------------------------------\\
-        #region --Constructors--
-        /// <summary>
-        /// Basic Constructor
-        /// </summary>
-        /// <history>
-        /// 04/09/2017 Created [Fabian Sauter]
-        /// </history>
         public BackgroundTasksSettingsPage()
         {
             this.InitializeComponent();
@@ -26,32 +13,11 @@ namespace UWP_XMPP_Client.Pages.SettingsPages
             loadSettings();
         }
 
-        #endregion
-        //--------------------------------------------------------Set-, Get- Methods:---------------------------------------------------------\\
-        #region --Set-, Get- Methods--
-
-
-        #endregion
-        //--------------------------------------------------------Misc Methods:---------------------------------------------------------------\\
-        #region --Misc Methods (Public)--
-
-
-        #endregion
-
-        #region --Misc Methods (Private)--
         private void loadSettings()
         {
             disablePush_tgls.IsOn = Settings.getSettingBoolean(SettingsConsts.DISABLE_PUSH);
         }
 
-        #endregion
-
-        #region --Misc Methods (Protected)--
-
-
-        #endregion
-        //--------------------------------------------------------Events:---------------------------------------------------------------------\\
-        #region --Events--
         private void AbstractBackRequestPage_BackRequested(object sender, Windows.UI.Core.BackRequestedEventArgs e)
         {
             Frame rootFrame = Window.Current.Content as Frame;
@@ -70,7 +36,5 @@ namespace UWP_XMPP_Client.Pages.SettingsPages
         {
             Settings.setSetting(SettingsConsts.DISABLE_PUSH, disablePush_tgls.IsOn);
         }
-
-        #endregion
     }
 }

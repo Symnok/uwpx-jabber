@@ -533,24 +533,37 @@ namespace XMPP_API.Classes.Network
 
         private void CONNECTION_ConnectionStateChanged(AbstractConnection2 connection, Events.ConnectionStateChangedEventArgs arg)
         {
-            switch (arg.newState)
+            // This handler is registered before XMPPClient's, so anything that
+            // escapes here aborts the rest of the invocation list and the state
+            // change is never reported to the client (e.g. requesting the device
+            // list on a socket the server has already closed used to swallow the
+            // 'Connected to account' notification entirely).
+            try
             {
-                case ConnectionState.CONNECTED:
-                    if (!CONNECTION.account.hasOmemoKeys())
-                    {
-                        setState(OmemoHelperState.ERROR);
-                        Logger.Error("[OMEMO HELPER](" + CONNECTION.account.getIdAndDomain() + ") Failed - no keys!");
-                    }
-                    else if (STATE == OmemoHelperState.DISABLED)
-                    {
-                        requestDeviceList();
-                    }
-                    break;
+                switch (arg.newState)
+                {
+                    case ConnectionState.CONNECTED:
+                        if (!CONNECTION.account.hasOmemoKeys())
+                        {
+                            setState(OmemoHelperState.ERROR);
+                            Logger.Error("[OMEMO HELPER](" + CONNECTION.account.getIdAndDomain() + ") Failed - no keys!");
+                        }
+                        else if (STATE == OmemoHelperState.DISABLED)
+                        {
+                            requestDeviceList();
+                        }
+                        break;
 
-                case ConnectionState.DISCONNECTED:
-                case ConnectionState.ERROR:
-                    reset();
-                    break;
+                    case ConnectionState.DISCONNECTED:
+                    case ConnectionState.ERROR:
+                        reset();
+                        break;
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("[OMEMO HELPER](" + CONNECTION.account.getIdAndDomain() + ") Failed to handle connection state " + arg.newState + ".", ex);
+                setState(OmemoHelperState.ERROR);
             }
         }
 

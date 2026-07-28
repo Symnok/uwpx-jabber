@@ -64,6 +64,19 @@ namespace UWP_XMPP_Client.Classes.Collections
         #endregion
         //--------------------------------------------------------Misc Methods:---------------------------------------------------------------\\
         #region --Misc Methods (Public)--
+        /// <summary>
+        /// Returns the already loaded ChatTemplate with the given chat id, or
+        /// null if this list does not contain it.
+        /// </summary>
+        public ChatTemplate GetById(string id)
+        {
+            if (id != null && DICTIONARY.ContainsKey(id))
+            {
+                return DICTIONARY[id];
+            }
+            return null;
+        }
+
         public bool UpdateChat(ChatTable chat)
         {
             if (DICTIONARY.ContainsKey(chat.id))

@@ -112,10 +112,57 @@ namespace UWP_XMPP_Client.Pages
         }
 
         /// <summary>
+        /// Selects the given chat on the ALREADY loaded page.
+        /// Used when the app gets activated by a toast while this page is
+        /// already the current one - navigating to ChatPage again would build a
+        /// second instance whose predecessor stays alive and subscribed to all
+        /// the DB events (Page_Loaded only detaches its own handler).
+        /// </summary>
+        /// <param name="chatId">The id of the chat which should get selected.</param>
+        public void showChatFromToast(string chatId)
+        {
+            if (string.IsNullOrEmpty(chatId))
+            {
+                return;
+            }
+
+            // Called on the UI thread from App.OnActivated, so select the chat
+            // exactly the way tapping it in the list does: just assign the item
+            // that is already loaded.
+            //
+            // Do NOT reload the list here. loadChats() clears CHATS and refills
+            // it with freshly built ChatTemplates from a thread pool thread and
+            // then selects one of those new instances, all from a dispatcher
+            // callback - swapping out every bound item (including the selected
+            // one) underneath the MasterDetailsView that way threw
+            // RPC_E_WRONG_THREAD (0x8001010E).
+            ChatTemplate chat = CHATS.GetById(chatId);
+            if (chat != null)
+            {
+                masterDetail_pnl.SelectedItem = chat;
+                return;
+            }
+
+            // Chat is not in the list yet (e.g. the message created it). Fall
+            // back to the normal load, which is the same path used on launch.
+            loadChats(chatId, true);
+        }
+
+        /// <summary>
         /// Loads all chats and inserts them into the chatsList.
         /// </summary>
         /// <param name="selectedChatId">The id of the chat which should get selected.</param>
         private void loadChats(string selectedChatId)
+        {
+            loadChats(selectedChatId, false);
+        }
+
+        /// <summary>
+        /// Loads all chats and inserts them into the chatsList.
+        /// </summary>
+        /// <param name="selectedChatId">The id of the chat which should get selected.</param>
+        /// <param name="forceSelect">Select the chat even if another one is already selected.</param>
+        private void loadChats(string selectedChatId, bool forceSelect)
         {
             // Load all chats:
             Task.Run(() =>
@@ -124,7 +171,8 @@ namespace UWP_XMPP_Client.Pages
                 List<ChatTemplate> chats = getChatsFromDB();
                 for (int i = 0; i < chats.Count; i++)
                 {
-                    if (string.Equals(selectedChatId, chats[i].chat.id))
+                    //if (string.Equals(selectedChatId, chats[i].chat.id))
+                    if (selectedChatId != null && chats[i] != null && chats[i].chat != null && string.Equals(selectedChatId, chats[i].chat.id))
                     {
                         selectedChat = chats[i];
                     }
@@ -141,7 +189,7 @@ namespace UWP_XMPP_Client.Pages
                     {
                         CHATS.AddRange(chats, false);
                     }
-                    if (masterDetail_pnl.SelectedItem == null && selectedChat != null)
+                    if ((forceSelect || masterDetail_pnl.SelectedItem == null) && selectedChat != null)
                     {
                         masterDetail_pnl.SelectedItem = selectedChat;
                     }
@@ -374,29 +422,59 @@ namespace UWP_XMPP_Client.Pages
 
         private async void masterDetail_pnl_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
-            // Send active chat state:
-            foreach (var added in e.AddedItems)
+            // Read BOTH collections out of the event args before the first
+            // await.
+            //
+            // SelectionChangedEventArgs is a thread-affine XAML object, and the
+            // sends below use ConfigureAwait(false), so everything after the
+            // first one continues on a thread pool thread. Reaching for
+            // e.RemovedItems from there threw
+            // "The application called an interface that was marshalled for a
+            // different thread" (RPC_E_WRONG_THREAD, 0x8001010E) - and since
+            // this is an async void event handler, nothing could catch it and
+            // it took the app down.
+            List<ChatTemplate> added = new List<ChatTemplate>();
+            List<ChatTemplate> removed = new List<ChatTemplate>();
+            foreach (object o in e.AddedItems)
             {
-                if (added is ChatTemplate)
+                if (o is ChatTemplate c)
                 {
-                    ChatTemplate c = added as ChatTemplate;
-                    if (shouldSendChatState(c.chat))
+                    added.Add(c);
+                }
+            }
+            foreach (object o in e.RemovedItems)
+            {
+                if (o is ChatTemplate c)
+                {
+                    removed.Add(c);
+                }
+            }
+
+            try
+            {
+                // Send active chat state:
+                foreach (ChatTemplate c in added)
+                {
+                    if (c.client != null && shouldSendChatState(c.chat))
                     {
                         await c.client.sendChatStateAsync(c.chat.chatJabberId, XMPP_API.Classes.Network.XML.Messages.XEP_0085.ChatState.ACTIVE).ConfigureAwait(false);
                     }
                 }
-            }
-            // Send inactive chat state:
-            foreach (var added in e.RemovedItems)
-            {
-                if (added is ChatTemplate)
+                // Send inactive chat state:
+                foreach (ChatTemplate c in removed)
                 {
-                    ChatTemplate c = added as ChatTemplate;
-                    if (shouldSendChatState(c.chat))
+                    if (c.client != null && shouldSendChatState(c.chat))
                     {
                         await c.client.sendChatStateAsync(c.chat.chatJabberId, XMPP_API.Classes.Network.XML.Messages.XEP_0085.ChatState.INACTIVE).ConfigureAwait(false);
                     }
                 }
+            }
+            catch (Exception ex)
+            {
+                // Same reason: an exception escaping an async void handler is
+                // unhandled by definition. Sending a chat state is never worth
+                // the process.
+                Logger.Error("Failed to send a chat state after the selected chat changed.", ex);
             }
         }
 

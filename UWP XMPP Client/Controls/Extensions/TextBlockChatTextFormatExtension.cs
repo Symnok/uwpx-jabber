@@ -1,11 +1,8 @@
-﻿using System;
-using System.Globalization;
+﻿using Logging;
+using System;
 using System.Linq;
 using System.Text.RegularExpressions;
-using System.Threading.Tasks;
 using Windows.ApplicationModel.Contacts;
-using Windows.ApplicationModel.Core;
-using Windows.UI.Core;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
 using Windows.UI.Xaml.Documents;
@@ -38,81 +35,52 @@ namespace UWP_XMPP_Client.Controls.Extensions
         private static readonly Regex PHONE_REGEX = new Regex(PHONE_REGEX_PATTERN, RegexOptions.IgnoreCase, TimeSpan.FromMilliseconds(250));
         private static readonly Regex EMOJI_REGEX = new Regex(EMOJI_REGEX_PATTERN, RegexOptions.IgnoreCase, TimeSpan.FromMilliseconds(500));
 
+        /// <summary>
+        /// Messages longer than this get shown as plain text. The link/mail/phone
+        /// regexes backtrack heavily, and this runs on the UI thread.
+        /// </summary>
+        private const int MAX_FORMAT_LENGTH = 2048;
+
         public static readonly DependencyProperty FormattedTextProperty =
             DependencyProperty.Register("FormattedText", typeof(string), typeof(TextBlockChatTextFormatExtension),
             new PropertyMetadata(string.Empty, (sender, e) =>
             {
-                string text = e.NewValue as string;
-                if (sender is TextBlock textBlock && textBlock != null && !string.IsNullOrWhiteSpace(text))
+                if (!(sender is TextBlock textBlock))
                 {
-                    // Clear all inlines:
+                    return;
+                }
+
+                // Clear all inlines. Always - list view containers get recycled,
+                // so leaving the previous message's inlines in place would show
+                // the wrong text:
+                textBlock.Inlines.Clear();
+
+                string text = e.NewValue as string;
+                if (string.IsNullOrWhiteSpace(text))
+                {
+                    return;
+                }
+
+                // This runs synchronously on the UI thread ON PURPOSE.
+                //
+                // It used to do the matching in a Task.Run and marshal every
+                // fragment back through CoreApplication.MainView.CoreWindow.
+                // Reading .CoreWindow off the UI thread throws
+                // RPC_E_WRONG_THREAD (0x8001010E), and because that happened
+                // inside a fire-and-forget task the failure only surfaced later
+                // as an unhandled exception with no stack - which is what took
+                // the app down as soon as a chat with text messages was opened.
+                // Every Run/Hyperlink built here is a thread-affine XAML object
+                // anyway, so it has to be built on this thread regardless.
+                try
+                {
+                    formatText(textBlock, text);
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error("Failed to format a chat message - falling back to plain text.", ex);
                     textBlock.Inlines.Clear();
-
-                    Task.Run(async () =>
-                    {
-                        // Check if single emoji:
-                        if (isSingleEmoji(text))
-                        {
-                            await CoreApplication.MainView.CoreWindow.Dispatcher.RunAsync(CoreDispatcherPriority.Normal, () => textBlock.Inlines.Add(new Run
-                            {
-                                Text = text,
-                                FontSize = 50
-                            }));
-                        }
-                        else
-                        {
-                            var lastPosition = 0;
-                            var matches = new Match[3] { Match.Empty, Match.Empty, Match.Empty };
-                            do
-                            {
-                                try
-                                {
-                                    matches[0] = URL_REGEX.Match(text, lastPosition);
-                                    matches[1] = EMAIL_REGEX.Match(text, lastPosition);
-                                    matches[2] = PHONE_REGEX.Match(text, lastPosition);
-                                }
-                                catch (RegexMatchTimeoutException)
-                                {
-                                }
-
-                                var firstMatch = matches.Where(x => x != null && x.Success).OrderBy(x => x.Index).FirstOrDefault();
-                                if (firstMatch == matches[0])
-                                {
-                                    // the first match is an URL:
-                                    await CoreApplication.MainView.CoreWindow.Dispatcher.RunAsync(CoreDispatcherPriority.Normal, () =>
-                                    {
-                                        createRunElement(textBlock, text, lastPosition, firstMatch.Index);
-                                        lastPosition = createUrlElement(textBlock, firstMatch);
-                                    });
-                                }
-                                else if (firstMatch == matches[1])
-                                {
-                                    // the first match is an email:
-                                    await CoreApplication.MainView.CoreWindow.Dispatcher.RunAsync(CoreDispatcherPriority.Normal, () =>
-                                    {
-                                        createRunElement(textBlock, text, lastPosition, firstMatch.Index);
-                                        lastPosition = createContactElement(textBlock, firstMatch, null);
-                                    });
-                                }
-                                else if (firstMatch == matches[2])
-                                {
-                                    // the first match is a phone number:
-                                    await CoreApplication.MainView.CoreWindow.Dispatcher.RunAsync(CoreDispatcherPriority.Normal, () =>
-                                    {
-                                        createRunElement(textBlock, text, lastPosition, firstMatch.Index);
-                                        lastPosition = createContactElement(textBlock, null, firstMatch);
-                                    });
-                                }
-                                else
-                                {
-                                    // no match, we add the whole text:
-                                    await CoreApplication.MainView.CoreWindow.Dispatcher.RunAsync(CoreDispatcherPriority.Normal, () => textBlock.Inlines.Add(new Run { Text = text.Substring(lastPosition) }));
-                                    lastPosition = text.Length;
-                                }
-                            }
-                            while (lastPosition < text.Length);
-                        }
-                    });
+                    textBlock.Inlines.Add(new Run { Text = text });
                 }
             }));
 
@@ -142,6 +110,89 @@ namespace UWP_XMPP_Client.Controls.Extensions
         #endregion
 
         #region --Misc Methods (Private)--
+        /// <summary>
+        /// Splits the given text into Runs and Hyperlinks and adds them to the
+        /// given TextBlock. Has to be called on the UI thread.
+        /// </summary>
+        private static void formatText(TextBlock textBlock, string text)
+        {
+            if (text.Length > MAX_FORMAT_LENGTH)
+            {
+                textBlock.Inlines.Add(new Run { Text = text });
+                return;
+            }
+
+            // Check if single emoji:
+            if (isSingleEmoji(text))
+            {
+                textBlock.Inlines.Add(new Run
+                {
+                    Text = text,
+                    FontSize = 50
+                });
+                return;
+            }
+
+            int lastPosition = 0;
+            Match[] matches = new Match[3];
+            do
+            {
+                // Reset every round. Keeping a previous round's match after a
+                // regex timeout could stop lastPosition from advancing and spin
+                // this loop forever:
+                matches[0] = Match.Empty;
+                matches[1] = Match.Empty;
+                matches[2] = Match.Empty;
+                try
+                {
+                    matches[0] = URL_REGEX.Match(text, lastPosition);
+                    matches[1] = EMAIL_REGEX.Match(text, lastPosition);
+                    matches[2] = PHONE_REGEX.Match(text, lastPosition);
+                }
+                catch (RegexMatchTimeoutException)
+                {
+                }
+
+                Match firstMatch = matches.Where(x => x != null && x.Success).OrderBy(x => x.Index).FirstOrDefault();
+                int newPosition;
+                if (firstMatch == matches[0])
+                {
+                    // the first match is an URL:
+                    createRunElement(textBlock, text, lastPosition, firstMatch.Index);
+                    newPosition = createUrlElement(textBlock, firstMatch);
+                }
+                else if (firstMatch == matches[1])
+                {
+                    // the first match is an email:
+                    createRunElement(textBlock, text, lastPosition, firstMatch.Index);
+                    newPosition = createContactElement(textBlock, firstMatch, null);
+                }
+                else if (firstMatch == matches[2])
+                {
+                    // the first match is a phone number:
+                    createRunElement(textBlock, text, lastPosition, firstMatch.Index);
+                    newPosition = createContactElement(textBlock, null, firstMatch);
+                }
+                else
+                {
+                    // no match, we add the whole text:
+                    textBlock.Inlines.Add(new Run { Text = text.Substring(lastPosition) });
+                    newPosition = text.Length;
+                }
+
+                if (newPosition <= lastPosition)
+                {
+                    // Never happens for the regexes above (they can't match
+                    // empty), but a stalled position would hang the UI thread,
+                    // so bail out with the remaining text instead:
+                    textBlock.Inlines.Add(new Run { Text = text.Substring(lastPosition) });
+                    return;
+                }
+                lastPosition = newPosition;
+            }
+            while (lastPosition < text.Length);
+        }
+
         /// <summary>
         /// Checks if the given text is just a single Unicode Emoji.
         /// </summary>

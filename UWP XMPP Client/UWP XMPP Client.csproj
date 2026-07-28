@@ -12,7 +12,7 @@
     <LangVersion>7.3</LangVersion>
     <DefaultLanguage>en-US</DefaultLanguage>
     <TargetPlatformIdentifier>UAP</TargetPlatformIdentifier>
-    <TargetPlatformVersion Condition=" '$(TargetPlatformVersion)' == '' ">10.0.15063.0</TargetPlatformVersion>
+    <TargetPlatformVersion Condition=" '$(TargetPlatformVersion)' == '' ">10.0.16299.0</TargetPlatformVersion>
     <TargetPlatformMinVersion>10.0.15063.0</TargetPlatformMinVersion>
     <MinimumVisualStudioVersion>14</MinimumVisualStudioVersion>
     <FileAlignment>512</FileAlignment>
@@ -25,7 +25,7 @@
     <PackageCertificateThumbprint>B0EB6780636BC6C74687459DB9DA9034E1BFD141</PackageCertificateThumbprint>
     <GenerateAppInstallerFile>False</GenerateAppInstallerFile>
     <UapAppxPackageBuildMode>SideloadOnly</UapAppxPackageBuildMode>
-    <AppInstallerUpdateFrequency>1</AppInstallerUpdateFrequency> 
+    <AppInstallerUpdateFrequency>1</AppInstallerUpdateFrequency>
     <AppInstallerCheckForUpdateFrequency>OnApplicationRun</AppInstallerCheckForUpdateFrequency>
     <AppxSymbolPackageEnabled>True</AppxSymbolPackageEnabled>
   </PropertyGroup>
@@ -66,14 +66,24 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Release|ARM'">
     <OutputPath>bin\ARM\Release\</OutputPath>
     <DefineConstants>TRACE;NETFX_CORE;WINDOWS_UWP</DefineConstants>
-    <Optimize>true</Optimize>
     <NoWarn>;2008</NoWarn>
-    <DebugType>pdbonly</DebugType>
     <PlatformTarget>ARM</PlatformTarget>
     <UseVSHostingProcess>false</UseVSHostingProcess>
     <ErrorReport>prompt</ErrorReport>
     <Prefer32Bit>true</Prefer32Bit>
-    <UseDotNetNativeToolchain>true</UseDotNetNativeToolchain>
+    <!-- DIAGNOSTIC BUILD - revert the four properties below before shipping.
+         .NET Native strips managed stack traces, which is why the
+         RPC_E_WRONG_THREAD crash only ever logged a bare message with no
+         frames. Compiling to IL keeps them, and unlike the Debug config this
+         still depends on the RETAIL VCLibs that is already on the phone (there
+         is no 32-bit ARM Debug VCLibs available for VS 18).
+         Cost: slower startup and slower execution on device.
+         Ship values: Optimize=true, DebugType=pdbonly,
+                      UseDotNetNativeToolchain=true, no DebugSymbols. -->
+    <UseDotNetNativeToolchain>false</UseDotNetNativeToolchain>
+    <Optimize>false</Optimize>
+    <DebugType>full</DebugType>
+    <DebugSymbols>true</DebugSymbols>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Debug|x64'">
     <DebugSymbols>true</DebugSymbols>
@@ -108,6 +118,7 @@
     <Reference Include="mscorlib" />
     <Compile Include="Classes\AppUpdateHandler.cs" />
     <Compile Include="Classes\BackgroundImageCache.cs" />
+    <Compile Include="Classes\BackgroundService.cs" />
     <Compile Include="Classes\BackgroundTaskHelper.cs" />
     <Compile Include="Classes\BrowseMUCNavigationParameter.cs" />
     <Compile Include="Classes\BuyContentHelper.cs" />
@@ -127,6 +138,7 @@
     <Compile Include="Classes\Collections\ObservableChatDictionaryList.cs" />
     <Compile Include="Classes\ShowAddMUCNavigationParameter.cs" />
     <Compile Include="Classes\UiUtils.cs" />
+    <Compile Include="Classes\XmppKeepAlive.cs" />
     <Compile Include="Controls\AccountControl.xaml.cs">
       <DependentUpon>AccountControl.xaml</DependentUpon>
     </Compile>

@@ -2,6 +2,7 @@
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
 using XMPP_API.Classes;
+using Logging;
 using System;
 using System.Threading.Tasks;
 using XMPP_API.Classes.Network.XML.Messages;
@@ -216,29 +217,47 @@ namespace UWP_XMPP_Client.Controls.Chat
 
                 Task.Run(async () =>
                 {
-                    // Show all chat messages:
-                    List<ChatMessageDataTemplate> msgs = new List<ChatMessageDataTemplate>();
-                    foreach (ChatMessageTable msg in ChatDBManager.INSTANCE.getAllChatMessagesForChat(chatCpy.id))
+                    // Nothing above a fire-and-forget Task.Run catches anything,
+                    // so an exception in here takes the whole app down with no
+                    // usable log. Keep it contained and record where it came
+                    // from.
+                    try
                     {
-                        msgs.Add(new ChatMessageDataTemplate
+                        // Show all chat messages:
+                        List<ChatMessageDataTemplate> msgs = new List<ChatMessageDataTemplate>();
+                        foreach (ChatMessageTable msg in ChatDBManager.INSTANCE.getAllChatMessagesForChat(chatCpy.id))
                         {
-                            message = msg,
-                            chat = chatCpy
+                            msgs.Add(new ChatMessageDataTemplate
+                            {
+                                message = msg,
+                                chat = chatCpy
+                            });
+                        }
+
+                        // Mark all unread messages as read for this chat:
+                        ChatDBManager.INSTANCE.markAllMessagesAsRead(chatCpy.id);
+                        // Remove notification group:
+                        ToastHelper.removeToastGroup(chatCpy.id);
+
+                        await Dispatcher.RunAsync(CoreDispatcherPriority.Normal, () =>
+                        {
+                            try
+                            {
+                                CHAT_MESSAGES.Clear();
+                                CHAT_MESSAGES.AddRange(msgs);
+                                invertedListView_lstv.Visibility = Visibility.Visible;
+                                loading_ldng.IsLoading = false;
+                            }
+                            catch (Exception ex)
+                            {
+                                Logger.Error("showChatMessages: applying messages to the UI failed for " + chatCpy.id, ex);
+                            }
                         });
                     }
-
-                    // Mark all unread messages as read for this chat:
-                    ChatDBManager.INSTANCE.markAllMessagesAsRead(chatCpy.id);
-                    // Remove notification group:
-                    ToastHelper.removeToastGroup(chatCpy.id);
-
-                    await Dispatcher.RunAsync(CoreDispatcherPriority.Normal, () =>
+                    catch (Exception ex)
                     {
-                        CHAT_MESSAGES.Clear();
-                        CHAT_MESSAGES.AddRange(msgs);
-                        invertedListView_lstv.Visibility = Visibility.Visible;
-                        loading_ldng.IsLoading = false;
-                    });
+                        Logger.Error("showChatMessages: loading messages failed for " + chatCpy.id, ex);
+                    }
                 });
             }
         }
@@ -665,17 +684,27 @@ namespace UWP_XMPP_Client.Controls.Chat
             {
                 if (Chat != null && Equals(args.MESSAGE.chatId, Chat.id))
                 {
-                    Task.Run(async () =>
+                    // Already on the UI thread here, and CHAT_MESSAGES is bound
+                    // to the list view - so update it directly instead of
+                    // hopping to a pool thread and posting a separate dispatcher
+                    // call per match. markAllMessagesAsRead() raises one of these
+                    // per unread message when a chat is opened, so the old shape
+                    // was O(unread x total) dispatcher round trips.
+                    try
                     {
                         for (int i = 0; i < CHAT_MESSAGES.Count; i++)
                         {
                             if (CHAT_MESSAGES[i].message != null && Equals(CHAT_MESSAGES[i].message.id, args.MESSAGE.id))
                             {
-                                // Only the main thread should update the list to prevent problems:
-                                await Dispatcher.RunAsync(CoreDispatcherPriority.Normal, () => CHAT_MESSAGES[i].message = args.MESSAGE);
+                                CHAT_MESSAGES[i].message = args.MESSAGE;
+                                break;
                             }
                         }
-                    });
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Error("Failed to apply a changed chat message to the UI.", ex);
+                    }
                 }
             });
         }

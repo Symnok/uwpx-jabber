@@ -251,6 +251,14 @@ namespace XMPP_API.Classes
             await connection.sendAsync(new ChatStateMessage(target, account.getIdDomainAndResource(), state), false, false);
         }
 
+        public async Task sendWhitespaceKeepAliveAsync()
+        {
+            if (connection != null && connection.state == ConnectionState.CONNECTED)
+            {
+                await connection.sendRawAsync(" ");
+            }
+        }
+
         #endregion
 
         #region --Misc Methods (Private)--

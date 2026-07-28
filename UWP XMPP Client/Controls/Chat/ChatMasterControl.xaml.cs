@@ -337,7 +337,11 @@ namespace UWP_XMPP_Client.Controls.Chat
 
         private async Task presenceSubscriptionRequestClickedAsync(bool accepted)
         {
-            await Client.answerPresenceSubscriptionRequest(Chat.chatJabberId, accepted).ConfigureAwait(false);
+            // No ConfigureAwait(false): Chat reads ChatTemp, a DependencyProperty
+            // on this control, and DependencyObject.GetValue() from a pool thread
+            // throws RPC_E_WRONG_THREAD. The continuation has to stay on the UI
+            // thread.
+            await Client.answerPresenceSubscriptionRequest(Chat.chatJabberId, accepted);
             Chat.ask = null;
             ChatDBManager.INSTANCE.setChat(Chat, false, true);
         }
@@ -561,7 +565,10 @@ namespace UWP_XMPP_Client.Controls.Chat
 
         private async void cancelPresenceSubscription_mfo_Click(object sender, RoutedEventArgs e)
         {
-            await Client.unsubscribeFromPresence(Chat.chatJabberId).ConfigureAwait(false);
+            // resetAsk() reads the ChatTemp DependencyProperty, so the
+            // continuation must stay on the UI thread - see
+            // presenceSubscriptionRequestClickedAsync().
+            await Client.unsubscribeFromPresence(Chat.chatJabberId);
             resetAsk();
         }
 
@@ -573,7 +580,9 @@ namespace UWP_XMPP_Client.Controls.Chat
 
         private async void cancelPresenceSubscriptionRequest_Click(object sender, RoutedEventArgs e)
         {
-            await Client.unsubscribeFromPresence(Chat.chatJabberId).ConfigureAwait(false);
+            // Continuation stays on the UI thread - resetAsk() touches a
+            // DependencyProperty.
+            await Client.unsubscribeFromPresence(Chat.chatJabberId);
             resetAsk();
         }
 

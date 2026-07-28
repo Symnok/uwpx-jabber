@@ -245,6 +245,11 @@ namespace XMPP_API.Classes.Network
             }
         }
 
+        public async Task<bool> sendRawAsync(string s)
+        {
+            return await TCP_CONNECTION.sendAsync(s);
+        }
+
         #endregion
 
         #region --Misc Methods (Private)--
