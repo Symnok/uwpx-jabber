@@ -1,26 +1,53 @@
-[<img src="https://assets.windowsphone.com/85864462-9c82-451e-9355-a3d5f874397a/English_get-it-from-MS_InvariantCulture_Default.png" width="80">](https://www.microsoft.com/store/apps/9NW16X9JB5WV?ocid=badge)
-[![Donate](https://liberapay.com/assets/widgets/donate.svg)](http://liberapay.uwpx.org)
-[![Donate](https://www.paypalobjects.com/webstatic/de_DE/i/de-pp-logo-100px.png)](http://paypal.uwpx.org)
+# UWPX Jabber — Jabber/XMPP client for Windows 10 Mobile
 
-[![Codacy Badge](https://api.codacy.com/project/badge/Grade/551476163f8f4784bd1017bf2e8f3db1)](https://www.codacy.com/app/COM8/UWPX-Client?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=UWPX/UWPX-Client&amp;utm_campaign=Badge_Grade)
+An XMPP / Jabber client for **Windows 10 Mobile**, based on
+[UWPX](https://github.com/UWPX/UWPX-Client).
 
-# UWP-XMPP-Client - Now with MUC support [read on...](https://github.com/UWPX/UWPX-Client/releases)
-[This app is still in alpha stage!]
+This repository is a Windows 10 Mobile revival of the UWPX client, built from the
+last version of the upstream project that predates WinUI — the point at which the
+app was still pure native UWP XAML and could target Windows 10 Mobile.
+
+> **Forked from upstream UWPX/UWPX-Client at commit
+> [`af681a7e`](https://github.com/UWPX/UWPX-Client/commit/af681a7eb4197127a7f6b1648771cae3733d298c)**
+> — *"Added a Windows Logging Channel for logging"* (2018-10-24).
+>
+> This is deliberately **the last commit compatible with Windows 10 Mobile**. The
+> next upstream commit,
+> [`897913aa`](https://github.com/UWPX/UWPX-Client/commit/897913aa08150b194e6befd9bbf0e40343b71973)
+> (2018-10-26), added the `Microsoft.UI.Xaml` (Windows UI Library) package. WinUI 2.x
+> controls have a runtime floor of Windows 10 build 16299, which is above the highest
+> build any Windows 10 Mobile device can run — so every later upstream commit is
+> unusable on the phone. Starting from `af681a7e` gives the most feature-complete
+> UWPX code that is still WinUI-free and phone-capable.
 
 Chat with all your XMPP contacts.
 
-**UWPX is a secure and Open Source XMPP app for all your UWP (Windows 10) devices.**
+**UWPX is a secure and Open Source XMPP app.** It implements the E**x**tensible
+**M**essaging and **P**resence **P**rotocol ([XMPP](https://xmpp.org/)). It is still
+in ALPHA state, so expect occasional crashes and unexpected behavior.
 
-It implements the E**x**tensible **M**essaging and **P**resence **P**rotocol ([XMPP](https://xmpp.org/)).
-At the moment UWPX is still in ALPHA state so expect regular crashes and unexpected behavior.
+---
+
+## Windows 10 Mobile scope
+
+- **Windows 10 Mobile.** Targets phone builds **1703 (10.0.15063)** and the Fall
+  Creators Update mobile line **1709 (last W10M build 10.0.15254)**. For desktop
+  Windows 10, use upstream [UWPX](https://github.com/UWPX/UWPX-Client) instead.
+- **ARM.** Windows 10 Mobile devices are ARM, so this is built and packaged for ARM.
+
+| Setting | Value |
+| --- | --- |
+| `TargetPlatformMinVersion` | 10.0.15063.0 (1703) — installs on W10M incl. last build 15254 |
+| `TargetPlatformVersion` (app) | 10.0.16299.0 (required so the XAML compiler resolves `MarkupExtension`) |
+| Architecture | ARM |
+| Toolchain | Visual Studio 2017, C++ platform toolset v141 |
 
 ## Table of Contents
 1. [Features](#features)
 2. [ToDo](#todo)
-3. [Alpha/Beta tester](#alphabeta-tester)
-4. [Installation (build it by your own)](#installation-build-it-by-your-own)
-5. [Examples](#examples)
-6. [References](#references)
+3. [Installation (build it yourself)](#installation-build-it-yourself)
+4. [References](#references)
+5. [Credits](#credits)
 
 ## Features:
 | Name | XEPs |
@@ -31,48 +58,44 @@ At the moment UWPX is still in ALPHA state so expect regular crashes and unexpec
 | Bookmarks | [XEP-0048](https://xmpp.org/extensions/xep-0048.html "XEP-0048") |
 | Publish-Subscribe | [XEP-0060](https://xmpp.org/extensions/xep-0060.html "XEP-0060") |
 | Chat State | [XEP-0085](https://xmpp.org/extensions/xep-0085.html "XEP-0085") |
-| Personal Eventing Protocol | [XEP-0163](https://xmpp.org/extensions/xep-0085.html "XEP-0163") |
+| Personal Eventing Protocol | [XEP-0163](https://xmpp.org/extensions/xep-0163.html "XEP-0163") |
 | Message Delivery Receipts | [XEP-0184](https://xmpp.org/extensions/xep-0184.html "XEP-0184") |
 | Direct MUC Invitations | [XEP-0249](https://xmpp.org/extensions/xep-0249.html "XEP-0249") |
 | Message Carbons | [XEP-0280](https://xmpp.org/extensions/xep-0280.html "XEP-0280") |
 | Message Processing Hints | [XEP-0334](https://xmpp.org/extensions/xep-0334.html "XEP-0334") |
-
 
 ## ToDo:
 | Name | XEPs |
 | ------------- | ------------- |
 | vcard-temp | [XEP-0054](https://xmpp.org/extensions/xep-0054.html "XEP-0054") |
 | User Avatar | [XEP-0084](https://xmpp.org/extensions/xep-0084.html "XEP-0084") |
-| Instant Messaging Intelligence Quotient (IM IQ) | [XEP-0148](https://xmpp.org/extensions/xep-0148.html "XEP-0148") |
 | Jingle | [XEP-0166](https://xmpp.org/extensions/xep-0166.html "XEP-0166") |
 | Stream Management | [XEP-0198](https://xmpp.org/extensions/xep-0198.html "XEP-0198") |
 | Message Archive Management | [XEP-0313](https://xmpp.org/extensions/xep-0313.html "XEP-0313") |
 | Chat Markers | [XEP-0333](https://xmpp.org/extensions/xep-0333.html "XEP-0333") |
 | HTTP File Upload | [XEP-0363](https://xmpp.org/extensions/xep-0363.html "XEP-0363") |
-| Mix | [XEP-0369](https://xmpp.org/extensions/xep-0369.html "XEP-0369") |
-| OMEMO (status -> [#5](https://github.com/UWPX/UWPX-Client/issues/5)) | [XEP-0163](https://xmpp.org/extensions/xep-0163.html "XEP-0163") and [XEP-0384](https://xmpp.org/extensions/xep-0384.html "XEP-0384") |
+| OMEMO | [XEP-0384](https://xmpp.org/extensions/xep-0384.html "XEP-0384") |
 
-[MORE NOTES TO COME]
-
-## Alpha/Beta tester:
-An alpha version of the app is available in the Windows Store [LINK](https://www.microsoft.com/store/apps/9NW16X9JB5WV).
-
-[<img src="https://assets.windowsphone.com/85864462-9c82-451e-9355-a3d5f874397a/English_get-it-from-MS_InvariantCulture_Default.png" width="150">](https://www.microsoft.com/store/apps/9NW16X9JB5WV?ocid=badge)
-
-## Installation (build it by your own):
-1. Install [Visual Studio 2017](https://www.visualstudio.com/de/downloads)
-2. Clone the repo with Visual Studio
-3. Build the project for your target platform
-4. Install the app on your target system:
-[Here](https://docs.microsoft.com/en-us/windows/uwp/get-started/enable-your-device-for-development) you can find more information about: How to install UWP apps, using the developer mode.
-
-## Examples:
-<img src="https://i.imgur.com/QegZMmp.png" width="400"> <img src="https://i.imgur.com/AwdYXFv.png" width="400">
-<br/><br/>
-<img src="https://i.imgur.com/A7oFZ4y.png" width="800">
-<img src="https://i.imgur.com/0CMR7ag.png" width="800">
+## Installation (build it yourself):
+1. Install [Visual Studio 2017](https://www.visualstudio.com/de/downloads) with:
+   - the **C++ (v141) Universal Windows Platform tools**, and
+   - the **10.0.15063** and **10.0.16299** Windows 10 SDKs.
+2. Clone the repo and open the solution in Visual Studio 2017.
+3. Set the configuration to **Release / ARM**.
+4. Build. To produce a sideload package: **Project -> Store -> Create App Packages ->
+   Sideloading -> ARM / Release**.
+5. To build from source you need your own signing certificate — create one via
+   `Package.appxmanifest -> Packaging -> Choose Certificate -> Create`.
+6. Install the resulting `.appx` on a developer-unlocked Windows 10 Mobile device.
+   [Here](https://docs.microsoft.com/en-us/windows/uwp/get-started/enable-your-device-for-development)
+   is more on enabling developer mode and sideloading UWP apps.
 
 ## References:
-This project wouldn’t be possible without the great work of all those people working on the libraries used by UWPX.
-[Here](https://uwpx.org/about/) you can find a list of all libraries and other references used for the UWPX developement.
-So take a second, head over and take a look at their great work!
+This project wouldn't be possible without the great work of all those people working
+on the libraries used by UWPX.
+[Here](https://uwpx.org/about/) you can find a list of all libraries and other
+references used for UWPX development.
+
+## Credits
+All application code is by the upstream [UWPX](https://github.com/UWPX/UWPX-Client)
+authors. This repository only backports/retargets that work to Windows 10 Mobile.
