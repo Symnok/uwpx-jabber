@@ -10,6 +10,12 @@ namespace UWP_XMPP_Client.DataTemplates
         public string name { get; set; }
         public string description { get; set; }
         public Type page { get; set; }
+        /// <summary>
+        /// Runs instead of navigating to <see cref="page"/>, for entries that do
+        /// something rather than open a settings page (Exit). When this is set,
+        /// <see cref="page"/> is ignored.
+        /// </summary>
+        public Action action { get; set; }
 
         #endregion
         //--------------------------------------------------------Constructor:----------------------------------------------------------------\\

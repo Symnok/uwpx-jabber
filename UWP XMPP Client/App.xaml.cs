@@ -242,25 +242,79 @@ namespace UWP_XMPP_Client
             {
                 Logger.Info("App activated by toast with: " + toastActivationArgs.Argument);
 
-                // A toast tap only brings the app up on its main screen - we
-                // deliberately do NOT open the chat the toast belongs to.
-                // Opening a specific chat from here means either navigating to a
-                // second ChatPage (the old one stays alive and subscribed to
-                // every ChatDBManager/MUCDBManager event) or mutating the
-                // already loaded list from the activation callback, both of
-                // which caused crashes/freezes on activation.
-                if (rootFrame.Content == null)
+                // Opening the chat the toast belongs to is safe again: what used
+                // to kill the app here was never the selection itself, it was
+                // ChatPage.masterDetail_pnl_SelectionChanged reading
+                // e.RemovedItems after an await that had already moved it off
+                // the UI thread (RPC_E_WRONG_THREAD). Selecting a chat from a
+                // toast is simply the fastest way to trigger that handler.
+                // Everything below still degrades to "just show the app" rather
+                // than throwing, because an exception on this path is unhandled
+                // by definition.
+                AbstractToastActivation activation = null;
+                if (!string.IsNullOrEmpty(toastActivationArgs.Argument))
                 {
-                    if (!Settings.getSettingBoolean(SettingsConsts.INITIALLY_STARTED))
+                    try
                     {
-                        rootFrame.Navigate(typeof(AddAccountPage), "App.xaml.cs");
+                        activation = ToastActivationArgumentParser.parseArguments(toastActivationArgs.Argument);
+                        Logger.Info("Toast activation parsed as: " + (activation == null ? "null" : activation.GetType().Name));
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Error("Failed to parse the toast activation argument.", ex);
+                    }
+                }
+                string toastChatId = (activation as ChatToastActivation)?.CHAT_ID;
+
+                try
+                {
+                    if (rootFrame.Content is ChatPage chatPage)
+                    {
+                        // ChatPage is already up. Navigating to it AGAIN builds a
+                        // second instance while the first stays alive and
+                        // subscribed to every ChatDBManager/MUCDBManager event,
+                        // so each toast doubled the UI work done per DB change -
+                        // that is what froze the app. Select on the page we
+                        // already have instead.
+                        if (toastChatId != null)
+                        {
+                            Logger.Info("Reusing the current ChatPage for toast chat: " + toastChatId);
+                            chatPage.showChatFromToast(toastChatId);
+                        }
+                    }
+                    else if (rootFrame.Content == null)
+                    {
+                        // Cold start. ChatPage picks the chat up from the
+                        // navigation parameter in its OnNavigatedTo.
+                        if (!Settings.getSettingBoolean(SettingsConsts.INITIALLY_STARTED))
+                        {
+                            rootFrame.Navigate(typeof(AddAccountPage), "App.xaml.cs");
+                        }
+                        else if (activation != null)
+                        {
+                            Logger.Info("Navigating to ChatPage for toast activation.");
+                            rootFrame.Navigate(typeof(ChatPage), activation);
+                        }
+                        else
+                        {
+                            rootFrame.Navigate(typeof(ChatPage), "App.xaml.cs");
+                        }
                     }
                     else
                     {
-                        rootFrame.Navigate(typeof(ChatPage), "App.xaml.cs");
+                        // Some other page is on top (settings, a profile, ...).
+                        // Passing null rather than "App.xaml.cs" here keeps the
+                        // first-run/what's-new dialogs out of an activation that
+                        // is not a cold start.
+                        Logger.Info("Navigating to ChatPage for toast activation from " + rootFrame.Content.GetType().Name + ".");
+                        rootFrame.Navigate(typeof(ChatPage), (object)activation);
                     }
                 }
-                Logger.Info("Toast activation handled - app brought to the main screen.");
+                catch (Exception ex)
+                {
+                    Logger.Error("Failed to handle the toast activation - showing the app as it is.", ex);
+                }
+                Logger.Info("Toast activation handled.");
             }
             else if (args is LaunchActivatedEventArgs launchActivationArgs)
             {
@@ -450,6 +504,15 @@ namespace UWP_XMPP_Client
             var deferral = e.SuspendingOperation.GetDeferral();
             try
             {
+                // An exit is already tearing everything down. Doing the normal
+                // suspend work now would request a FRESH extended execution
+                // session and re-enter the disconnect we are in the middle of.
+                if (AppExitHelper.IsExiting)
+                {
+                    Logger.Info("Suspending while exiting - shutdown already handled.");
+                    return;
+                }
+
                 // ALWAYS close the XMPP streams cleanly before we go away.
                 //
                 // The keep-alive session cannot be relied on to hold the sockets:

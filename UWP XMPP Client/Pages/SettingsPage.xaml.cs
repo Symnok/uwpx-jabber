@@ -1,5 +1,7 @@
 ﻿using System;
 using System.Collections.ObjectModel;
+using System.Threading.Tasks;
+using UWP_XMPP_Client.Classes;
 using UWP_XMPP_Client.DataTemplates;
 using UWP_XMPP_Client.Pages.SettingsPages;
 using Windows.UI.Xaml;
@@ -54,7 +56,18 @@ namespace UWP_XMPP_Client.Pages
                 new SettingTemplate {icon = "\uE72E", name = "Security", description = "Certificates, Password Vault", page = typeof(SecuritySettingsPage)},
                 new SettingTemplate {icon = "\uEB52", name = "Donate", description = "PayPal, Liberapay", page = typeof(DonateSettingsPage)},
                 new SettingTemplate {icon = "\xE713", name = "Misc", description = "Everything Else", page = typeof(MiscSettingsPage)},
+                new SettingTemplate {icon = "\uE7E8", name = "Exit", description = "Close The App Completely", action = exitApp},
             };
+        }
+
+        /// <summary>
+        /// Full shutdown - same as BACK on the chat list. Stops the background
+        /// session and location, unregisters the background tasks, disconnects
+        /// and terminates. Not the same as HOME, which only suspends.
+        /// </summary>
+        private void exitApp()
+        {
+            Task ignored = AppExitHelper.exitAppAsync("settings exit tile");
         }
 
         private void navigateToPage(Type pageType)
@@ -72,9 +85,16 @@ namespace UWP_XMPP_Client.Pages
         #region --Events--
         private void AdaptiveGridView_ItemClick(object sender, ItemClickEventArgs e)
         {
-            if(e.ClickedItem != null && e.ClickedItem is SettingTemplate)
+            if (e.ClickedItem is SettingTemplate setting)
             {
-                navigateToPage((e.ClickedItem as SettingTemplate).page);
+                if (setting.action != null)
+                {
+                    setting.action();
+                }
+                else if (setting.page != null)
+                {
+                    navigateToPage(setting.page);
+                }
             }
         }
 

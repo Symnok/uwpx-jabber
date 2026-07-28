@@ -153,6 +153,46 @@ namespace UWP_XMPP_Client.Classes
             BgDiag("CatchUp: REGISTERED (" + CATCH_UP_INTERVAL_MINUTES + " min), access=" + status);
         }
 
+        /// <summary>
+        /// Unregisters every background task this app owns, so nothing wakes the
+        /// process after the user has exited. Called only from the explicit exit
+        /// path - suspending must NOT do this, or backgrounded message delivery
+        /// would stop.
+        /// The next launch registers them again (registerToastBackgroundTaskAsync
+        /// and registerCatchUpTaskAsync both re-create a missing registration).
+        /// </summary>
+        public static void unregisterAllTasks()
+        {
+            foreach (var task in BackgroundTaskRegistration.AllTasks)
+            {
+                if (!task.Value.Name.Equals(TOAST_BACKGROUND_TASK_NAME) && !task.Value.Name.Equals(CATCH_UP_TASK_NAME))
+                {
+                    continue;
+                }
+
+                try
+                {
+                    // true: also cancel an instance that is running right now.
+                    task.Value.Unregister(true);
+                    Logger.Info("Unregistered " + task.Value.Name + " background task.");
+                    BgDiag("Unregistered " + task.Value.Name + " (app exit)");
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error("Failed to unregister the " + task.Value.Name + " background task.", ex);
+                }
+            }
+
+            // Drop the version stamp too, so a future change to
+            // CATCH_UP_REG_VERSION can never be mistaken for "already
+            // registered" against a registration that no longer exists.
+            try
+            {
+                Windows.Storage.ApplicationData.Current.LocalSettings.Values.Remove("catchup_reg_version");
+            }
+            catch { }
+        }
+
         #endregion
 
         #region --Misc Methods (Private)--

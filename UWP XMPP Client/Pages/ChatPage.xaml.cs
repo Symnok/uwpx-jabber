@@ -51,7 +51,10 @@ namespace UWP_XMPP_Client.Pages
             this.CHATS_ACV.SortDescriptions.Add(new SortDescription(nameof(ChatTemplate.chat), SortDirection.Descending));
             this.CHAT_FILTER = new ChatFilter(this.CHATS_ACV);
             this.InitializeComponent();
-            SystemNavigationManager.GetForCurrentView().BackRequested += ChatPage2_BackRequested;
+            // BackRequested is hooked in OnNavigatedTo and released in
+            // OnNavigatedFrom - subscribing from the constructor left every
+            // instance we ever navigated away from attached to the
+            // SystemNavigationManager for the life of the process.
         }
 
         #endregion
@@ -284,6 +287,9 @@ namespace UWP_XMPP_Client.Pages
             main_grid.Visibility = Visibility.Collapsed;
 
             SystemNavigationManager.GetForCurrentView().AppViewBackButtonVisibility = AppViewBackButtonVisibility.Visible;
+            SystemNavigationManager.GetForCurrentView().BackRequested -= ChatPage2_BackRequested;
+            SystemNavigationManager.GetForCurrentView().BackRequested += ChatPage2_BackRequested;
+
             string toastActivationString = null;
             if (e.NavigationMode == NavigationMode.New && e.Parameter is string && ((e.Parameter as string).Equals("App.xaml.cs") || (e.Parameter as string).Equals("AddAccountPage.xaml.cs")))
             {
@@ -309,15 +315,40 @@ namespace UWP_XMPP_Client.Pages
 
         private void ChatPage2_BackRequested(object sender, BackRequestedEventArgs e)
         {
+            if (e.Handled)
+            {
+                return;
+            }
             if (!(Window.Current.Content is Frame rootFrame))
             {
                 return;
             }
-            if (rootFrame.CanGoBack && e.Handled == false)
+
+            // Somewhere to go back to - ordinary back navigation.
+            if (rootFrame.CanGoBack)
             {
                 e.Handled = true;
                 rootFrame.GoBack();
+                return;
             }
+
+            // A chat is open on a narrow screen: back closes the chat first.
+            // Handled here rather than left to the MasterDetailsView, because
+            // this handler is registered before the control's own and would
+            // otherwise quit the app out from under an open chat.
+            if (masterDetail_pnl.ViewState == MasterDetailsViewState.Details)
+            {
+                e.Handled = true;
+                masterDetail_pnl.SelectedItem = null;
+                return;
+            }
+
+            // Root of the back stack, no chat open: BACK means quit for good -
+            // background tasks unregistered, location released, accounts
+            // disconnected, process terminated. HOME is unaffected and still
+            // just suspends the app.
+            e.Handled = true;
+            Task ignored = AppExitHelper.exitAppAsync("back button on the chat list");
         }
 
         private async void INSTANCE_ChatChanged(ChatDBManager handler, ChatChangedEventArgs args)
@@ -482,7 +513,8 @@ namespace UWP_XMPP_Client.Pages
         {
             UiUtils.setBackgroundImage(backgroundImage_img);
 
-            // Subscribe to chat and MUC info changed events:
+            // Subscribe to chat and MUC info changed events.
+            // Released again in OnNavigatedFrom - see the note there.
             ChatDBManager.INSTANCE.ChatChanged -= INSTANCE_ChatChanged;
             ChatDBManager.INSTANCE.ChatChanged += INSTANCE_ChatChanged;
             MUCDBManager.INSTANCE.MUCInfoChanged -= INSTANCE_MUCInfoChanged;
@@ -527,6 +559,36 @@ namespace UWP_XMPP_Client.Pages
         protected async override void OnNavigatedFrom(NavigationEventArgs e)
         {
             base.OnNavigatedFrom(e);
+
+            // Detach EVERYTHING this page subscribed to, before the await.
+            //
+            // These are all long-lived publishers (the DB manager singletons and
+            // the view's SystemNavigationManager), so a page that stays
+            // subscribed after being navigated away from is never collected and
+            // keeps handling events forever. "-=" only removes THIS instance's
+            // delegate, so the next page's "-=; +=" in Page_Loaded could not
+            // clean up after us. Every abandoned instance then posted its own
+            // dispatcher callback - and a DB query - for every chat row change,
+            // which is a lot: presence updates alone rewrite chat rows in bursts
+            // on each reconnect. That is the slowdown/freeze that got worse the
+            // longer the app ran.
+            //
+            // Pages here have NavigationCacheMode.Disabled (the default), so a
+            // navigated-from page is never shown again - going back builds a new
+            // instance whose Page_Loaded subscribes afresh. If anyone ever turns
+            // caching on, move these subscriptions to OnNavigatedTo, or the page
+            // will come back deaf to chat updates.
+            try
+            {
+                ChatDBManager.INSTANCE.ChatChanged -= INSTANCE_ChatChanged;
+                MUCDBManager.INSTANCE.MUCInfoChanged -= INSTANCE_MUCInfoChanged;
+                SystemNavigationManager.GetForCurrentView().BackRequested -= ChatPage2_BackRequested;
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("Failed to unsubscribe the ChatPage events.", ex);
+            }
+
             await UiUtils.onPageNavigatedFromAsync();
         }
 

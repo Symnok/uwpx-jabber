@@ -116,6 +116,7 @@
       <DependentUpon>App.xaml</DependentUpon>
     </Compile>
     <Reference Include="mscorlib" />
+    <Compile Include="Classes\AppExitHelper.cs" />
     <Compile Include="Classes\AppUpdateHandler.cs" />
     <Compile Include="Classes\BackgroundImageCache.cs" />
     <Compile Include="Classes\BackgroundService.cs" />
