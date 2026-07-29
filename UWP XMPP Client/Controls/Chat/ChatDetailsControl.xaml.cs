@@ -25,6 +25,10 @@ using XMPP_API.Classes.Network.XML.Messages.XEP_0384;
 using Data_Manager2.Classes.ToastActivation;
 using UWP_XMPP_Client.Classes.Collections;
 using System.ComponentModel;
+using Windows.Media.Capture;
+using Windows.Storage;
+using Windows.Storage.Pickers;
+using UWP_XMPP_Client.Dialogs;
 
 namespace UWP_XMPP_Client.Controls.Chat
 {
@@ -432,6 +436,95 @@ namespace UWP_XMPP_Client.Controls.Chat
 
                 message_tbx.Text = "";
             }
+        }
+
+        private void hideClipFlyout()
+        {
+            clip_btn.Flyout?.Hide();
+        }
+
+        /// <summary>
+        /// Uploads the file to the server's HTTP upload component and, on success,
+        /// sends the resulting URL as a message. Receiving clients - including this
+        /// one - treat an image URL as a picture, which is how file sharing works on
+        /// XMPP.
+        /// </summary>
+        private async Task uploadAndSendAsync(StorageFile file)
+        {
+            if (file == null)
+            {
+                return;                            // picker cancelled
+            }
+            if (Client == null || Chat == null)
+            {
+                return;
+            }
+
+            clip_btn.IsEnabled = false;
+            loading_ldng.IsLoading = true;
+            try
+            {
+                FileUploadResult result = await FileUploadHelper.uploadAsync(Client, file);
+                if (result.error != null)
+                {
+                    TextDialog dialog = new TextDialog(result.error, "Unable to send the file");
+                    await UiUtils.showDialogAsyncQueue(dialog);
+                    return;
+                }
+                sendUrlMessage(result.url);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("Failed to send a file.", ex);
+                TextDialog dialog = new TextDialog(ex.Message, "Unable to send the file");
+                await UiUtils.showDialogAsyncQueue(dialog);
+            }
+            finally
+            {
+                loading_ldng.IsLoading = false;
+                clip_btn.IsEnabled = true;
+            }
+        }
+
+        /// <summary>
+        /// Sends a plain message whose body is the uploaded file's URL. Mirrors
+        /// sendMessage(), minus the OMEMO branch: encrypting the link while the file
+        /// itself sits unencrypted on the server would only look secure.
+        /// </summary>
+        private void sendUrlMessage(string url)
+        {
+            if (string.IsNullOrEmpty(url))
+            {
+                return;
+            }
+
+            MessageMessage sendMessage;
+            if (Chat.chatType == ChatType.MUC && MUCInfo != null)
+            {
+                sendMessage = new MessageMessage(Client.getXMPPAccount().getIdAndDomain(),
+                    Chat.chatJabberId, url, getChatType(), MUCInfo.nickname, false);
+            }
+            else
+            {
+                sendMessage = new MessageMessage(Client.getXMPPAccount().getIdAndDomain(),
+                    Chat.chatJabberId, url, getChatType(), true);
+            }
+
+            ChatMessageTable sendMessageTable = new ChatMessageTable(sendMessage, Chat)
+            {
+                state = MessageState.SENDING
+            };
+            sendMessage.chatMessageId = sendMessageTable.id;
+
+            Chat.lastActive = DateTime.Now;
+            ChatTable chatCpy = Chat;
+            Task.Run(() =>
+            {
+                ChatDBManager.INSTANCE.setChatMessage(sendMessageTable, true, false);
+                ChatDBManager.INSTANCE.setChat(chatCpy, false, true);
+            });
+
+            Client.sendMessageAsync(sendMessage).ConfigureAwait(false);
         }
 
         private void showBackgroundForViewState(MasterDetailsViewState state)
@@ -851,24 +944,86 @@ namespace UWP_XMPP_Client.Controls.Chat
             }
         }
 
-        private void clipImgLib_btn_Click(object sender, RoutedEventArgs e)
+        private async void clipImgLib_btn_Click(object sender, RoutedEventArgs e)
         {
-            // ToDo implement
+            if (IsDummy)
+            {
+                return;
+            }
+            hideClipFlyout();
+
+            FileOpenPicker picker = new FileOpenPicker
+            {
+                ViewMode = PickerViewMode.Thumbnail,
+                SuggestedStartLocation = PickerLocationId.PicturesLibrary
+            };
+            picker.FileTypeFilter.Add(".jpg");
+            picker.FileTypeFilter.Add(".jpeg");
+            picker.FileTypeFilter.Add(".png");
+            picker.FileTypeFilter.Add(".gif");
+
+            StorageFile file = await picker.PickSingleFileAsync();
+            await uploadAndSendAsync(file);
         }
 
-        private void clipImgCam_btn_Click(object sender, RoutedEventArgs e)
+        private async void clipImgCam_btn_Click(object sender, RoutedEventArgs e)
         {
-            // ToDo implement
+            if (IsDummy)
+            {
+                return;
+            }
+            hideClipFlyout();
+
+            StorageFile file;
+            try
+            {
+                CameraCaptureUI captureUI = new CameraCaptureUI();
+                captureUI.PhotoSettings.Format = CameraCaptureUIPhotoFormat.Jpeg;
+                // Not HighestAvailable: a full resolution phone photo is several MB,
+                // and upload components usually cap the file size. 3MP is still more
+                // than the receiving end will display.
+                captureUI.PhotoSettings.MaxResolution =
+                    CameraCaptureUIMaxPhotoResolution.Large3M;
+
+                // Returns null when the user backs out of the camera.
+                file = await captureUI.CaptureFileAsync(CameraCaptureUIMode.Photo);
+            }
+            catch (Exception ex)
+            {
+                // Thrown when the camera is unavailable or already in use by another
+                // app - not something the upload path below would report sensibly.
+                Logger.Error("Failed to capture a photo.", ex);
+                TextDialog dialog = new TextDialog(ex.Message, "Unable to use the camera");
+                await UiUtils.showDialogAsyncQueue(dialog);
+                return;
+            }
+
+            await uploadAndSendAsync(file);
         }
 
         private void clipDraw_btn_Click(object sender, RoutedEventArgs e)
         {
-            // ToDo implement
+            // Not implemented: needs an ink canvas surface and a way to rasterise it.
         }
 
-        private void clipFile_btn_Click(object sender, RoutedEventArgs e)
+        private async void clipFile_btn_Click(object sender, RoutedEventArgs e)
         {
-            // ToDo implement
+            if (IsDummy)
+            {
+                return;
+            }
+            hideClipFlyout();
+
+            FileOpenPicker picker = new FileOpenPicker
+            {
+                ViewMode = PickerViewMode.List,
+                SuggestedStartLocation = PickerLocationId.DocumentsLibrary
+            };
+            // The picker refuses to open with no filter at all.
+            picker.FileTypeFilter.Add("*");
+
+            StorageFile file = await picker.PickSingleFileAsync();
+            await uploadAndSendAsync(file);
         }
 
         private void Value_PropertyChanged(object sender, PropertyChangedEventArgs e)

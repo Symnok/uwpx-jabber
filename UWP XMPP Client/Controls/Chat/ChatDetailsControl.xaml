@@ -259,8 +259,7 @@
                                 <Button x:Name="clipImgLib_btn"
                                         HorizontalAlignment="Stretch"
                                         HorizontalContentAlignment="Left"
-                                        Click="clipImgLib_btn_Click"
-                                        IsEnabled="False">
+                                        Click="clipImgLib_btn_Click">
                                     <StackPanel Orientation="Horizontal">
                                         <TextBlock VerticalAlignment="Center"
                                                    FontFamily="Segoe MDL2 Assets"
@@ -277,8 +276,7 @@
                                         Margin="0,10,0,0"
                                         HorizontalAlignment="Stretch"
                                         HorizontalContentAlignment="Left"
-                                        Click="clipImgCam_btn_Click"
-                                        IsEnabled="False">
+                                        Click="clipImgCam_btn_Click">
                                     <StackPanel Orientation="Horizontal">
                                         <TextBlock VerticalAlignment="Center"
                                                    FontFamily="Segoe MDL2 Assets"
@@ -313,8 +311,7 @@
                                         Margin="0,10,0,0"
                                         HorizontalAlignment="Stretch"
                                         HorizontalContentAlignment="Left"
-                                        Click="clipFile_btn_Click"
-                                        IsEnabled="False">
+                                        Click="clipFile_btn_Click">
                                     <StackPanel Orientation="Horizontal">
                                         <TextBlock VerticalAlignment="Center"
                                                    FontFamily="Segoe MDL2 Assets"

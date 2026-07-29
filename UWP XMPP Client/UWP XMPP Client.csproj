@@ -124,6 +124,7 @@
     <Compile Include="Classes\BrowseMUCNavigationParameter.cs" />
     <Compile Include="Classes\BuyContentHelper.cs" />
     <Compile Include="Classes\ChatFilter.cs" />
+    <Compile Include="Classes\FileUploadHelper.cs" />
     <Compile Include="Classes\Collections\MyAdvancedCollectionView.cs" />
     <Compile Include="Classes\Collections\MyAdvancedCollectionView.Defer.cs" />
     <Compile Include="Classes\Collections\MyAdvancedCollectionView.Events.cs" />

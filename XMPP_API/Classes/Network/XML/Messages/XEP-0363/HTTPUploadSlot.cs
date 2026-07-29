@@ -22,17 +22,37 @@ namespace XMPP_API.Classes.Network.XML.Messages.XEP_0363
         /// </history>
         public HTTPUploadSlot(XmlNode node)
         {
-            XmlNode putNode = XMLUtils.getChildNode(node, "put");
-            URL_PUT = putNode.Attributes["url"]?.Value;
-
             HEADERS = new Dictionary<string, string>();
-            foreach (XmlAttribute att in putNode.Attributes)
+
+            XmlNode putNode = XMLUtils.getChildNode(node, "put");
+            if (putNode != null)
             {
-                HEADERS.Add(att.Name, att.Value);
+                URL_PUT = putNode.Attributes["url"]?.Value;
+
+                // XEP-0363 headers are <header name='...'>value</header> CHILDREN of
+                // <put>, not attributes of it. Copying the attributes in put 'url'
+                // into the header list, which servers reject when it is sent back as
+                // a request header, and missed the Authorization header that many
+                // upload components require.
+                foreach (XmlNode child in putNode.ChildNodes)
+                {
+                    if (!string.Equals(child.Name, "header"))
+                    {
+                        continue;
+                    }
+                    string name = child.Attributes["name"]?.Value;
+                    if (!string.IsNullOrEmpty(name))
+                    {
+                        HEADERS[name] = child.InnerText;
+                    }
+                }
             }
 
             XmlNode getNode = XMLUtils.getChildNode(node, "get");
-            URL_GET = getNode.Attributes["url"]?.Value;
+            if (getNode != null)
+            {
+                URL_GET = getNode.Attributes["url"]?.Value;
+            }
         }
 
         #endregion
