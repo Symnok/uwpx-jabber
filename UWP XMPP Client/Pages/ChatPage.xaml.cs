@@ -291,12 +291,7 @@ namespace UWP_XMPP_Client.Pages
             SystemNavigationManager.GetForCurrentView().BackRequested += ChatPage2_BackRequested;
 
             string toastActivationString = null;
-            if (e.NavigationMode == NavigationMode.New && e.Parameter is string && ((e.Parameter as string).Equals("App.xaml.cs") || (e.Parameter as string).Equals("AddAccountPage.xaml.cs")))
-            {
-                await UiUtils.showInitialStartDialogAsync();
-                await UiUtils.showWhatsNewDialog();
-            }
-            else if (e.Parameter is ChatToastActivation chatToastActivation)
+            if (e.Parameter is ChatToastActivation chatToastActivation)
             {
                 toastActivationString = chatToastActivation.CHAT_ID;
             }
@@ -451,7 +446,7 @@ namespace UWP_XMPP_Client.Pages
             (Window.Current.Content as Frame).Navigate(typeof(SettingsPage));
         }
 
-        private async void masterDetail_pnl_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        private void masterDetail_pnl_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             // Read BOTH collections out of the event args before the first
             // await.
@@ -481,32 +476,53 @@ namespace UWP_XMPP_Client.Pages
                 }
             }
 
-            try
+            // Tell the notification layer which chat is on screen, so a message
+            // arriving in it raises no toast at all. Set before the first await:
+            // everything after that runs on a thread pool thread.
+            ToastHelper.OpenChatId = added.Count > 0 ? added[0].chat?.id : null;
+
+            // Send the chat states OFF the UI thread, and never await them here.
+            //
+            // sendChatStateAsync is async, but an async method runs
+            // SYNCHRONOUSLY until its first real suspension point - and this one
+            // reaches TCPConnection2.WRITE_SEMA.Wait(), a blocking wait. Awaiting
+            // it straight from this handler therefore blocks the UI thread.
+            // Selecting a chat from a toast is the worst case: the app has just
+            // come back from the background, where the socket usually died, so
+            // the wait can run until the system kills the app - a minute of
+            // frozen UI, no exception and nothing in the log.
+            //
+            // ConfigureAwait(false) does not help. It only decides where the
+            // continuation resumes, never where the synchronous part runs.
+            Task ignored = Task.Run(async () =>
             {
-                // Send active chat state:
-                foreach (ChatTemplate c in added)
+                try
                 {
-                    if (c.client != null && shouldSendChatState(c.chat))
+                    // Send active chat state:
+                    foreach (ChatTemplate c in added)
                     {
-                        await c.client.sendChatStateAsync(c.chat.chatJabberId, XMPP_API.Classes.Network.XML.Messages.XEP_0085.ChatState.ACTIVE).ConfigureAwait(false);
+                        if (c.client != null && shouldSendChatState(c.chat))
+                        {
+                            await c.client.sendChatStateAsync(c.chat.chatJabberId, XMPP_API.Classes.Network.XML.Messages.XEP_0085.ChatState.ACTIVE).ConfigureAwait(false);
+                        }
+                    }
+                    // Send inactive chat state:
+                    foreach (ChatTemplate c in removed)
+                    {
+                        if (c.client != null && shouldSendChatState(c.chat))
+                        {
+                            await c.client.sendChatStateAsync(c.chat.chatJabberId, XMPP_API.Classes.Network.XML.Messages.XEP_0085.ChatState.INACTIVE).ConfigureAwait(false);
+                        }
                     }
                 }
-                // Send inactive chat state:
-                foreach (ChatTemplate c in removed)
+                catch (Exception ex)
                 {
-                    if (c.client != null && shouldSendChatState(c.chat))
-                    {
-                        await c.client.sendChatStateAsync(c.chat.chatJabberId, XMPP_API.Classes.Network.XML.Messages.XEP_0085.ChatState.INACTIVE).ConfigureAwait(false);
-                    }
+                    // Same reason: an exception escaping an async void handler is
+                    // unhandled by definition. Sending a chat state is never worth
+                    // the process.
+                    Logger.Error("Failed to send a chat state after the selected chat changed.", ex);
                 }
-            }
-            catch (Exception ex)
-            {
-                // Same reason: an exception escaping an async void handler is
-                // unhandled by definition. Sending a chat state is never worth
-                // the process.
-                Logger.Error("Failed to send a chat state after the selected chat changed.", ex);
-            }
+            });
         }
 
         private void Page_Loaded(object sender, RoutedEventArgs e)
@@ -559,6 +575,12 @@ namespace UWP_XMPP_Client.Pages
         protected async override void OnNavigatedFrom(NavigationEventArgs e)
         {
             base.OnNavigatedFrom(e);
+
+            // No chat is on screen once we leave this page (Settings, etc.), so
+            // messages must notify again - silently while the app is still in
+            // the foreground. Re-published by masterDetail_pnl_SelectionChanged
+            // when the page is rebuilt and a chat gets selected again.
+            ToastHelper.OpenChatId = null;
 
             // Detach EVERYTHING this page subscribed to, before the await.
             //
