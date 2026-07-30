@@ -13,6 +13,21 @@ namespace Data_Manager2.Classes.ToastActivation
         private const string SEND_BUTTON_IMAGE_PATH = "Assets/Images/send.png";
         public const string TEXT_BOX_ID = "msg_tbx";
 
+        /// <summary>
+        /// The app window is on screen. Published by the app (see
+        /// BackgroundService.IsInForeground), because toasts are raised from
+        /// ConnectionHandler on a thread pool thread where Window.Current is
+        /// always null and cannot answer this.
+        /// </summary>
+        public static volatile bool IsAppInForeground = true;
+
+        /// <summary>
+        /// Id of the chat currently open on screen, or null. Published by
+        /// ChatPage. A message arriving in this chat while the app is on
+        /// screen needs no notification at all - the user is reading it.
+        /// </summary>
+        public static volatile string OpenChatId = null;
+
         #endregion
         //--------------------------------------------------------Constructor:----------------------------------------------------------------\\
         #region --Constructors--
@@ -29,6 +44,40 @@ namespace Data_Manager2.Classes.ToastActivation
         public static void removeToastGroup(string group)
         {
             ToastNotificationManager.History.RemoveGroup(group);
+        }
+
+        /// <summary>
+        /// Puts the number of chats holding unread messages on the Start tile,
+        /// the way the tile badge works for mail and messaging apps.
+        ///
+        /// Clearing at zero is not optional: without it Windows keeps showing
+        /// the last number it was given, forever.
+        /// </summary>
+        public static void updateUnreadBadge()
+        {
+            try
+            {
+                int count = DBManager.ChatDBManager.INSTANCE.getUnreadChatCount();
+                BadgeUpdater updater = BadgeUpdateManager.CreateBadgeUpdaterForApplication();
+                if (count <= 0)
+                {
+                    updater.Clear();
+                    return;
+                }
+
+                Windows.Data.Xml.Dom.XmlDocument xml = BadgeUpdateManager.GetTemplateContent(BadgeTemplateType.BadgeNumber);
+                Windows.Data.Xml.Dom.XmlElement badge = xml.SelectSingleNode("/badge") as Windows.Data.Xml.Dom.XmlElement;
+                if (badge is null)
+                {
+                    return;
+                }
+                badge.SetAttribute("value", count.ToString());
+                updater.Update(new BadgeNotification(xml));
+            }
+            catch (System.Exception ex)
+            {
+                Logging.Logger.Error("Failed to update the unread tile badge.", ex);
+            }
         }
 
         public static void showChatTextToast(ChatMessageTable msg, ChatTable chat)
@@ -145,6 +194,24 @@ namespace Data_Manager2.Classes.ToastActivation
         #region --Misc Methods (Private)--
         private static void popToast(ToastContent content, ChatTable chat)
         {
+            if (IsAppInForeground)
+            {
+                // The message belongs to the chat being read right now: there is
+                // nothing to announce, so no toast at all - no sound, no popup
+                // and no entry in the notification centre.
+                if (chat.id != null && Equals(chat.id, OpenChatId))
+                {
+                    return;
+                }
+
+                // On screen, but a different chat. The popup still has to appear
+                // so the user learns about it, only the sound is dropped.
+                content.Audio = new ToastAudio()
+                {
+                    Silent = true
+                };
+            }
+
             var toastNotif = new ToastNotification(content.GetXml())
             {
                 Group = chat.id

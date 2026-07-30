@@ -3,8 +3,6 @@
     public static class SettingsConsts
     {
         public const string INITIALLY_STARTED = "initially_started";
-        public const string HIDE_INITIAL_START_DIALOG_ALPHA = "hide_initial_start_dialog_alpha";
-        public const string HIDE_WHATS_NEW_DIALOG = "hide_whats_new_dialog_alpha_9";
 
         public const string APP_REQUESTED_THEME = "app_requested_theme";
 

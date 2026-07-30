@@ -84,6 +84,14 @@ namespace UWP_XMPP_Client
             this.Resuming += App_Resuming;
             this.UnhandledException += App_UnhandledException;
 
+            // Visibility transitions. Unlike Suspending/Resuming these still
+            // fire while the keep-alive session defers suspension, so they are
+            // the only reliable signal that the window has left the screen -
+            // including a screen lock. They decide whether an incoming message
+            // is allowed to make a sound.
+            this.EnteredBackground += (s, e) => BackgroundService.IsInForeground = false;
+            this.LeavingBackground += (s, e) => BackgroundService.IsInForeground = true;
+
             // Application.UnhandledException only ever sees a stackless
             // System.Exception for errors that start in the WinRT/XAML layer,
             // which is why every RPC_E_WRONG_THREAD report so far has had
@@ -153,6 +161,11 @@ namespace UWP_XMPP_Client
                 DiscoDBManager.INSTANCE.initManager();
                 ImageDBManager.INSTANCE.initManager();
                 MUCDBManager.INSTANCE.initManager();
+
+                // Re-sync the tile badge on every start. Messages can be read or
+                // arrive while the app is not running (the background task), so
+                // the number Windows still shows may be stale.
+                Data_Manager2.Classes.ToastActivation.ToastHelper.updateUnreadBadge();
             });
         }
 
@@ -481,6 +494,15 @@ namespace UWP_XMPP_Client
             {
                 Logger.Error("Catch-up run failed.", ex);
             }
+
+            // Re-sync the tile badge before the deferral completes.
+            //
+            // Messages that arrived during the drain already trigger a badge
+            // update from ConnectionHandler, but that one is fire-and-forget:
+            // completing the deferral suspends the process, which can cut it
+            // off before it writes. This call runs inline, so the number is
+            // correct by the time we go back to sleep.
+            Data_Manager2.Classes.ToastActivation.ToastHelper.updateUnreadBadge();
         }
 
         protected async override void OnLaunched(LaunchActivatedEventArgs args)
