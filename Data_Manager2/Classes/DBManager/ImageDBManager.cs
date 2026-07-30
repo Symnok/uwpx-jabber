@@ -246,21 +246,27 @@ namespace Data_Manager2.Classes.DBManager
         /// <param name="msg">The ChatMessageTable containing the image url.</param>
         public void downloadImage(ChatMessageTable msg)
         {
-            if (msg.isImage)
+            if (!msg.isImage)
             {
-                Task.Run(async () =>
-                {
-                    ImageTable img = new ImageTable()
-                    {
-                        messageId = msg.id,
-                        path = null,
-                        state = DownloadState.WAITING,
-                        progress = 0
-                    };
-                    update(img);
-                    await downloadImageAsync(img, msg.message);
-                });
+                return;
             }
+
+            ImageTable img = new ImageTable()
+            {
+                messageId = msg.id,
+                path = null,
+                state = DownloadState.WAITING,
+                progress = 0
+            };
+
+            // Created and stored SYNCHRONOUSLY, before this returns. The caller raises
+            // NewChatMessage straight afterwards and the UI immediately looks this row
+            // up; doing it inside the Task.Run below meant the lookup usually lost the
+            // race and the bubble showed "tap to redownload" for an image that was in
+            // fact downloading fine.
+            update(img);
+
+            Task.Run(async () => await downloadImageAsync(img, msg.message));
         }
 
         #endregion

@@ -93,7 +93,13 @@ namespace Thread_Save_Components.Classes.SQLite
             }
             catch (Exception e)
             {
-                Logger.Error("Error in update", e);
+                // Which type failed and why. "Error in update" on its own said only
+                // that some row somewhere did not save, which is not enough to act on -
+                // a swallowed constraint violation here shows up much later as a
+                // message or an image that mysteriously will not display.
+                string type = obj == null ? "null" : obj.GetType().Name;
+                string reason = e == null ? "unknown" : e.GetType().Name + ": " + e.Message;
+                Logger.Error("Error in update of " + type + " - " + reason, e);
             }
         }
 

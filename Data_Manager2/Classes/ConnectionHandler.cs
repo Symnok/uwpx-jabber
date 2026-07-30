@@ -234,6 +234,7 @@ namespace Data_Manager2.Classes
         private void onClientDisconnectedOrError(XMPPClient client)
         {
             ChatDBManager.INSTANCE.resetPresence(client.getXMPPAccount().getIdAndDomain());
+            clearResourcePresence(client.getXMPPAccount().getIdAndDomain());
             MUCHandler.INSTANCE.onClientDisconnected(client);
         }
 
@@ -309,6 +310,104 @@ namespace Data_Manager2.Classes
             }
         }
 
+        /// <summary>
+        /// Which resources of a contact are currently available, keyed by chat id and
+        /// then by full JID. In memory only - it is rebuilt from the presence the
+        /// server sends after every connect.
+        /// </summary>
+        private readonly Dictionary<string, Dictionary<string, Presence>> RESOURCE_PRESENCE =
+            new Dictionary<string, Dictionary<string, Presence>>();
+
+        /// <summary>
+        /// Records one resource's presence and returns the contact's presence overall:
+        /// the most available of its resources, or Unavailable once none are left.
+        /// </summary>
+        private Presence updateResourcePresence(string chatId, string fullJid, string type,
+            Presence presence)
+        {
+            if (string.IsNullOrEmpty(chatId) || string.IsNullOrEmpty(fullJid))
+            {
+                return presence;
+            }
+
+            lock (RESOURCE_PRESENCE)
+            {
+                Dictionary<string, Presence> resources;
+                if (!RESOURCE_PRESENCE.TryGetValue(chatId, out resources))
+                {
+                    resources = new Dictionary<string, Presence>();
+                    RESOURCE_PRESENCE[chatId] = resources;
+                }
+
+                if (string.Equals(type, "unavailable"))
+                {
+                    resources.Remove(fullJid);
+                }
+                else
+                {
+                    resources[fullJid] = presence;
+                }
+
+                Presence best = Presence.Unavailable;
+                foreach (Presence current in resources.Values)
+                {
+                    if (availability(current) > availability(best))
+                    {
+                        best = current;
+                    }
+                }
+                return best;
+            }
+        }
+
+        /// <summary>
+        /// How available a presence is. Written out rather than comparing the enum
+        /// directly, because NotDefined sorts highest in the enum but means "unknown".
+        /// </summary>
+        private static int availability(Presence presence)
+        {
+            switch (presence)
+            {
+                case Presence.Chat: return 5;
+                case Presence.Online: return 4;
+                case Presence.Away: return 3;
+                case Presence.Xa: return 2;
+                case Presence.Dnd: return 1;
+                default: return 0;
+            }
+        }
+
+        /// <summary>
+        /// Forgets every tracked resource for an account. Called when its client goes
+        /// away, so resources that were available at disconnect are not still counted
+        /// as available after reconnecting.
+        /// </summary>
+        private void clearResourcePresence(string userAccountId)
+        {
+            if (string.IsNullOrEmpty(userAccountId))
+            {
+                return;
+            }
+
+            lock (RESOURCE_PRESENCE)
+            {
+                List<string> stale = new List<string>();
+                foreach (string chatId in RESOURCE_PRESENCE.Keys)
+                {
+                    // Chat ids are built as 'contact_account', so this is the account's
+                    // own set of chats.
+                    if (chatId != null && chatId.EndsWith(userAccountId))
+                    {
+                        stale.Add(chatId);
+                    }
+                }
+                foreach (string chatId in stale)
+                {
+                    RESOURCE_PRESENCE.Remove(chatId);
+                }
+            }
+        }
+
         private void C_NewPresence(XMPPClient client, XMPP_API.Classes.Events.NewPresenceMessageEventArgs args)
         {
             string from = Utils.getBareJidFromFullJid(args.PRESENCE_MESSAGE.getFrom());
@@ -350,8 +449,30 @@ namespace Data_Manager2.Classes
 
             if (chat != null)
             {
-                chat.status = args.PRESENCE_MESSAGE.STATUS;
-                chat.presence = args.PRESENCE_MESSAGE.PRESENCE;
+                // Presence is per RESOURCE, but a ChatTable holds one value per
+                // contact. Taking whatever arrived last means a contact signed in on
+                // two devices shows the presence of whichever one spoke most recently,
+                // and - worse - one of them signing out marks the whole contact
+                // offline while the other is still connected. A client with a
+                // background agent (a second, short-lived resource) therefore appeared
+                // to go offline every time its agent finished a run.
+                Presence best = updateResourcePresence(id,
+                    args.PRESENCE_MESSAGE.getFrom(),
+                    args.PRESENCE_MESSAGE.TYPE,
+                    args.PRESENCE_MESSAGE.PRESENCE);
+
+                // A departing resource's status text must not overwrite the one from
+                // the resource that is still here.
+                if (!string.Equals(args.PRESENCE_MESSAGE.TYPE, "unavailable"))
+                {
+                    chat.status = args.PRESENCE_MESSAGE.STATUS;
+                }
+                else if (best == Presence.Unavailable)
+                {
+                    chat.status = null;
+                }
+
+                chat.presence = best;
                 ChatDBManager.INSTANCE.setChat(chat, false, true);
             }
             else

@@ -241,11 +241,20 @@ namespace Data_Manager2.Classes.DBManager
             update(message);
             if (triggerNewChatMessage)
             {
-                NewChatMessage?.Invoke(this, new NewChatMessageEventArgs(message));
+                // cacheImage FIRST, then the event.
+                //
+                // The other way round loses a race: the event makes the UI build the
+                // speech bubble, which looks up the ImageTable row for the message. If
+                // the row does not exist yet the bubble shows "tap to redownload" and
+                // never recovers, because it only subscribes to download-state changes
+                // when it finds a row. Creating the row before the UI hears about the
+                // message means the bubble finds it in WAITING/DOWNLOADING, shows the
+                // progress bar, and updates itself when the download finishes.
                 if (message.isImage)
                 {
                     cacheImage(message);
                 }
+                NewChatMessage?.Invoke(this, new NewChatMessageEventArgs(message));
             }
             if (triggerMessageChanged)
             {
