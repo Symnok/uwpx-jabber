@@ -54,7 +54,20 @@ namespace UWP_XMPP_Client.Classes
         private readonly SemaphoreSlim _gate = new SemaphoreSlim(1, 1);
 
         /// <summary>App is on screen. Maintained from App.xaml.cs.</summary>
-        public static bool IsInForeground = true;
+        public static bool IsInForeground
+        {
+            get { return _isInForeground; }
+            set
+            {
+                _isInForeground = value;
+                // Mirror it down to the notification layer. Toasts are raised
+                // from Data_Manager2 on a thread pool thread, where
+                // Window.Current is null and the foreground state cannot be
+                // read - so it has to be pushed there instead.
+                Data_Manager2.Classes.ToastActivation.ToastHelper.IsAppInForeground = value;
+            }
+        }
+        private static bool _isInForeground = true;
 
         /// <summary>Whether the always-on session is currently held.</summary>
         public bool KeepAliveActive { get { return _keepAliveSession != null; } }

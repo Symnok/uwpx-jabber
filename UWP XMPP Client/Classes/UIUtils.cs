@@ -172,26 +172,6 @@ namespace UWP_XMPP_Client.Classes
             return await Windows.System.Launcher.LaunchUriAsync(url);
         }
 
-        public static async Task showInitialStartDialogAsync()
-        {
-            if (!Settings.getSettingBoolean(SettingsConsts.HIDE_INITIAL_START_DIALOG_ALPHA))
-            {
-                InitialStartDialog dialog = new InitialStartDialog();
-                await showDialogAsyncQueue(dialog);
-                Settings.setSetting(SettingsConsts.HIDE_INITIAL_START_DIALOG_ALPHA, !dialog.showOnStartup);
-            }
-        }
-
-        public static async Task showWhatsNewDialog()
-        {
-            if (!Settings.getSettingBoolean(SettingsConsts.HIDE_WHATS_NEW_DIALOG))
-            {
-                WhatsNewDialog dialog = new WhatsNewDialog();
-                await showDialogAsyncQueue(dialog);
-                Settings.setSetting(SettingsConsts.HIDE_WHATS_NEW_DIALOG, !dialog.showOnStartup);
-            }
-        }
-
         public static void addTextToClipboard(string text)
         {
             DataPackage package = new DataPackage();

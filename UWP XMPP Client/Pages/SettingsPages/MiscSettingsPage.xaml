@@ -95,89 +95,22 @@
                         Margin="10,10,0,0"
                         Click="clearCache_btn_Click"
                         Content="Clear cache"/>
-                <ToggleSwitch x:Name="showInitialStartDialog_tgls"
-                              Margin="10,10,0,0"
-                              Header="Show welcome dialog on startup"
-                              Toggled="showInitialStartDialog_tgls_Toggled"/>
-                <ToggleSwitch x:Name="showWhatsNewDialog_tgls"
-                              Margin="10,10,0,0"
-                              Header="Show what's new dialog on startup"
-                              Toggled="showWhatsNewDialog_tgls_Toggled"/>
 
                 <controls:SeperatorControl Text="About and links:"/>
-                <StackPanel x:Name="contributeGithub_stckp"
-                            Margin="10,10,0,0"
-                            Orientation="Horizontal"
-                            Tapped="contributeGithub_stckp_Tapped">
-                    <Image Height="30"
-                           Source="ms-appx:///Assets/Images/github_mark.png"/>
-                    <TextBlock Margin="10,0,0,0"
-                               VerticalAlignment="Center"
-                               FontSize="30"
-                               Text="Contribute on GitHub"/>
-                </StackPanel>
-                <StackPanel x:Name="reportBug_stckp"
-                            Height="33"
-                            Margin="10,10,0,0"
-                            Orientation="Horizontal"
-                            Tapped="reportBug_stckp_Tapped">
-                    <TextBlock FontFamily="Segoe MDL2 Assets"
-                               FontSize="30"
-                               Text="&#xEBE8;"/>
-                    <TextBlock Margin="10,-7,0,0"
-                               VerticalAlignment="Center"
-                               FontSize="30"
-                               Text="Report bugs"/>
-                </StackPanel>
-                <StackPanel x:Name="feedback_stckp"
-                            Height="30"
-                            Margin="10,10,0,0"
-                            Orientation="Horizontal"
-                            Tapped="feedback_stckp_Tapped">
-                    <TextBlock FontFamily="Segoe MDL2 Assets"
-                               FontSize="30"
-                               Text="&#xE939;"/>
-                    <TextBlock Margin="10,0,0,0"
-                               VerticalAlignment="Center"
-                               FontSize="30"
-                               Text="Give feedback"/>
-                </StackPanel>
-                <StackPanel x:Name="license_stckp"
-                            Height="30"
-                            Margin="10,10,0,0"
-                            Orientation="Horizontal"
-                            Tapped="license_stckp_Tapped">
-                    <Image Height="30"
-                           Source="ms-appx:///Assets/Images/license.png"/>
-                    <TextBlock Margin="10,-6,0,0"
-                               FontSize="30"
-                               Text="License"/>
-                </StackPanel>
-                <StackPanel x:Name="privacyPolicy_stckp"
-                            Margin="10,10,0,0"
-                            Orientation="Horizontal"
-                            Tapped="privacyPolicy_stckp_Tapped">
-                    <TextBlock FontFamily="Segoe MDL2 Assets"
-                               FontSize="30"
-                               Text="&#xE72E;"/>
-                    <TextBlock Margin="10,-7,0,0"
-                               VerticalAlignment="Top"
-                               FontSize="30"
-                               Text="Privacy policy"/>
-                </StackPanel>
-                <StackPanel x:Name="thanks_stckp"
-                            Height="30"
-                            Margin="10,10,0,0"
-                            Orientation="Horizontal"
-                            Tapped="thanks_stckp_Tapped">
-                    <TextBlock FontFamily="Segoe MDL2 Assets"
-                               FontSize="30"
-                               Text="&#xE789;"/>
-                    <TextBlock Margin="10,0,0,0"
-                               VerticalAlignment="Center"
-                               FontSize="30"
-                               Text="Special thanks to..."/>
-                </StackPanel>
+                <!-- Plain text rather than tappable rows. Selection is left on so the
+                     addresses can be copied. -->
+                <TextBlock Margin="10,10,10,0"
+                           IsTextSelectionEnabled="True"
+                           TextWrapping="Wrap"
+                           Text="GitHub: https://github.com/Symnok/uwpx-jabber"/>
+                <TextBlock Margin="10,10,10,0"
+                           IsTextSelectionEnabled="True"
+                           TextWrapping="Wrap"
+                           Text="Privacy Policy: https://github.com/Symnok/uwpx-jabber/blob/main/PRIVACY_POLICY.md"/>
+                <TextBlock Margin="10,10,10,10"
+                           IsTextSelectionEnabled="True"
+                           TextWrapping="Wrap"
+                           Text="License: https://github.com/Symnok/uwpx-jabber/blob/main/LICENSE"/>
             </StackPanel>
         </Grid>
     </ScrollViewer>

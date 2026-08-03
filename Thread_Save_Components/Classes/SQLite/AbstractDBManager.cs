@@ -1,4 +1,4 @@
-using Logging;
+﻿using Logging;
 using System;
 using System.IO;
 using Windows.Storage;

@@ -107,8 +107,6 @@ namespace UWP_XMPP_Client.Pages.SettingsPages
             showLogSize();
             showImageChacheSize();
 
-            showInitialStartDialog_tgls.IsOn = !Settings.getSettingBoolean(SettingsConsts.HIDE_INITIAL_START_DIALOG_ALPHA);
-            showWhatsNewDialog_tgls.IsOn = !Settings.getSettingBoolean(SettingsConsts.HIDE_WHATS_NEW_DIALOG);
             disableCrashReporting_tgls.IsOn = Settings.getSettingBoolean(SettingsConsts.DISABLE_CRASH_REPORTING);
         }
 
@@ -206,16 +204,6 @@ namespace UWP_XMPP_Client.Pages.SettingsPages
             loadSettings();
         }
 
-        private void showInitialStartDialog_tgls_Toggled(object sender, RoutedEventArgs e)
-        {
-            Settings.setSetting(SettingsConsts.HIDE_INITIAL_START_DIALOG_ALPHA, !showInitialStartDialog_tgls.IsOn);
-        }
-
-        private void showWhatsNewDialog_tgls_Toggled(object sender, RoutedEventArgs e)
-        {
-            Settings.setSetting(SettingsConsts.HIDE_WHATS_NEW_DIALOG, !showWhatsNewDialog_tgls.IsOn);
-        }
-
         private void disableCrashReporting_tgls_Toggled(object sender, RoutedEventArgs e)
         {
             Settings.setSetting(SettingsConsts.DISABLE_CRASH_REPORTING, disableCrashReporting_tgls.IsOn);
@@ -226,30 +214,10 @@ namespace UWP_XMPP_Client.Pages.SettingsPages
             await UiUtils.launchUriAsync(new Uri("https://github.com/Symnok/uwpx-jabber/blob/master/PRIVACY_POLICY.md"));
         }
 
-        private async void contributeGithub_stckp_Tapped(object sender, Windows.UI.Xaml.Input.TappedRoutedEventArgs e)
-        {
-            await UiUtils.launchUriAsync(new Uri("https://github.com/Symnok/uwpx-jabber"));
-        }
 
-        private async void reportBug_stckp_Tapped(object sender, Windows.UI.Xaml.Input.TappedRoutedEventArgs e)
-        {
-            await UiUtils.launchUriAsync(new Uri("https://github.com/Symnok/uwpx-jabber/issues"));
-        }
 
-        private async void feedback_stckp_Tapped(object sender, Windows.UI.Xaml.Input.TappedRoutedEventArgs e)
-        {
-            await UiUtils.launchUriAsync(new Uri("https://github.com/Symnok/uwpx-jabber/issues"));
-        }
 
-        private async void license_stckp_Tapped(object sender, Windows.UI.Xaml.Input.TappedRoutedEventArgs e)
-        {
-            await UiUtils.launchUriAsync(new Uri("https://github.com/Symnok/uwpx-jabber/blob/master/LICENSE"));
-        }
 
-        private async void privacyPolicy_stckp_Tapped(object sender, Windows.UI.Xaml.Input.TappedRoutedEventArgs e)
-        {
-            await UiUtils.launchUriAsync(new Uri("https://github.com/Symnok/uwpx-jabber/blob/master/PRIVACY_POLICY.md"));
-        }
 
         private async void clearCache_btn_Click(object sender, RoutedEventArgs e)
         {
@@ -282,10 +250,6 @@ namespace UWP_XMPP_Client.Pages.SettingsPages
             await ImageDBManager.INSTANCE.openCachedImagesFolderAsync();
         }
 
-        private async void thanks_stckp_Tapped(object sender, Windows.UI.Xaml.Input.TappedRoutedEventArgs e)
-        {
-            await UiUtils.launchUriAsync(new Uri("https://uwpx.org/about/"));
-        }
 
         #endregion
     }

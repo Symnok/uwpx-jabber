@@ -131,14 +131,6 @@ namespace UWP_XMPP_Client.Pages
 
         }
 
-        protected async override void OnNavigatedTo(NavigationEventArgs e)
-        {
-            if (e.NavigationMode == NavigationMode.New && e.Parameter is string && (e.Parameter as string).Equals("App.xaml.cs"))
-            {
-                await UiUtils.showInitialStartDialogAsync();
-            }
-        }
-
         private async void account_ac_AccountAccepted(Controls.AccountControl sender, EventArgs args)
         {
             await acceptAsync();
