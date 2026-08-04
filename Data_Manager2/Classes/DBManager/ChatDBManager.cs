@@ -144,25 +144,6 @@ namespace Data_Manager2.Classes.DBManager
             return dB.Query<ChatMessageTable>(true, "SELECT * FROM " + DBTableConsts.CHAT_MESSAGE_TABLE + " WHERE chatId = ? AND state = ?;", chatId, MessageState.UNREAD);
         }
 
-        /// <summary>
-        /// How many chats hold at least one unread message - the number the
-        /// Start tile badge shows. Counts CHATS, not messages: five new
-        /// messages in one conversation is still one dialog waiting.
-        /// </summary>
-        public int getUnreadChatCount()
-        {
-            // The connection wrapper offers no ExecuteScalar, so the count comes
-            // back through a one-column row instead.
-            List<UnreadChatCountRow> rows = dB.Query<UnreadChatCountRow>(true, "SELECT COUNT(DISTINCT chatId) AS cnt FROM " + DBTableConsts.CHAT_MESSAGE_TABLE + " WHERE state = ?;", MessageState.UNREAD);
-            return rows.Count > 0 ? rows[0].cnt : 0;
-        }
-
-        /// <summary>Row shape for the COUNT query above.</summary>
-        public class UnreadChatCountRow
-        {
-            public int cnt { get; set; }
-        }
-
         public List<ChatTable> getAllChatsForClient(string userAccountId)
         {
             return dB.Query<ChatTable>(true, "SELECT * FROM " + DBTableConsts.CHAT_TABLE + " WHERE userAccountId = ?;", userAccountId);
@@ -235,8 +216,6 @@ namespace Data_Manager2.Classes.DBManager
             if (list.Count > 0)
             {
                 Parallel.ForEach(list, (msg) => markMessageAsRead(msg));
-                // This chat just stopped being unread - the badge has to drop.
-                ToastActivation.ToastHelper.updateUnreadBadge();
             }
         }
 
@@ -246,11 +225,6 @@ namespace Data_Manager2.Classes.DBManager
             if (msg != null)
             {
                 markMessageAsRead(msg);
-                // Reached from the "Mark as read" toast button, which can run
-                // with the app closed. The per-message overload is deliberately
-                // left alone: markAllMessagesAsRead loops over it and updates
-                // the badge once at the end instead of once per message.
-                ToastActivation.ToastHelper.updateUnreadBadge();
             }
         }
 
