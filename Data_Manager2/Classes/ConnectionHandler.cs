@@ -717,14 +717,6 @@ namespace Data_Manager2.Classes
                     }
                 });
             }
-
-            // Keep the Start tile badge in step. Outside the toast block on
-            // purpose: a muted chat raises no toast but its messages are still
-            // unread, so they still count towards the badge.
-            if (!doesMessageExist)
-            {
-                Task.Run(() => ToastHelper.updateUnreadBadge());
-            }
         }
 
         private async void INSTANCE_AccountChanged(AccountDBManager handler, AccountChangedEventArgs args)
