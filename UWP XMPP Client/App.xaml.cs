@@ -161,12 +161,31 @@ namespace UWP_XMPP_Client
                 DiscoDBManager.INSTANCE.initManager();
                 ImageDBManager.INSTANCE.initManager();
                 MUCDBManager.INSTANCE.initManager();
-
-                // Re-sync the tile badge on every start. Messages can be read or
-                // arrive while the app is not running (the background task), so
-                // the number Windows still shows may be stale.
-                Data_Manager2.Classes.ToastActivation.ToastHelper.updateUnreadBadge();
             });
+
+            clearTileBadge();
+        }
+
+        /// <summary>
+        /// Wipes the unread-count badge off the Start tile.
+        ///
+        /// The unread badge feature is gone, but Windows keeps displaying the
+        /// last value it was ever handed - removing the code that sets it does
+        /// not remove the number already on the tile. This runs on every start
+        /// so a badge left behind by an older build (or by the lock screen)
+        /// disappears the first time the app is opened. It is idempotent and
+        /// costs nothing once the tile is already clean.
+        /// </summary>
+        private void clearTileBadge()
+        {
+            try
+            {
+                BadgeUpdateManager.CreateBadgeUpdaterForApplication().Clear();
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("Failed to clear the tile badge.", ex);
+            }
         }
 
         /// <summary>
@@ -494,15 +513,6 @@ namespace UWP_XMPP_Client
             {
                 Logger.Error("Catch-up run failed.", ex);
             }
-
-            // Re-sync the tile badge before the deferral completes.
-            //
-            // Messages that arrived during the drain already trigger a badge
-            // update from ConnectionHandler, but that one is fire-and-forget:
-            // completing the deferral suspends the process, which can cut it
-            // off before it writes. This call runs inline, so the number is
-            // correct by the time we go back to sleep.
-            Data_Manager2.Classes.ToastActivation.ToastHelper.updateUnreadBadge();
         }
 
         protected async override void OnLaunched(LaunchActivatedEventArgs args)
