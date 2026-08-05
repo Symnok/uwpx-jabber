@@ -49,4 +49,5 @@
     <DeviceCapability Name="webcam" />
     <DeviceCapability Name="location" />
   </Capabilities>
+
 </Package>

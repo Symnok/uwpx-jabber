@@ -46,40 +46,6 @@ namespace Data_Manager2.Classes.ToastActivation
             ToastNotificationManager.History.RemoveGroup(group);
         }
 
-        /// <summary>
-        /// Puts the number of chats holding unread messages on the Start tile,
-        /// the way the tile badge works for mail and messaging apps.
-        ///
-        /// Clearing at zero is not optional: without it Windows keeps showing
-        /// the last number it was given, forever.
-        /// </summary>
-        public static void updateUnreadBadge()
-        {
-            try
-            {
-                int count = DBManager.ChatDBManager.INSTANCE.getUnreadChatCount();
-                BadgeUpdater updater = BadgeUpdateManager.CreateBadgeUpdaterForApplication();
-                if (count <= 0)
-                {
-                    updater.Clear();
-                    return;
-                }
-
-                Windows.Data.Xml.Dom.XmlDocument xml = BadgeUpdateManager.GetTemplateContent(BadgeTemplateType.BadgeNumber);
-                Windows.Data.Xml.Dom.XmlElement badge = xml.SelectSingleNode("/badge") as Windows.Data.Xml.Dom.XmlElement;
-                if (badge is null)
-                {
-                    return;
-                }
-                badge.SetAttribute("value", count.ToString());
-                updater.Update(new BadgeNotification(xml));
-            }
-            catch (System.Exception ex)
-            {
-                Logging.Logger.Error("Failed to update the unread tile badge.", ex);
-            }
-        }
-
         public static void showChatTextToast(ChatMessageTable msg, ChatTable chat)
         {
             var toastContent = new ToastContent()
