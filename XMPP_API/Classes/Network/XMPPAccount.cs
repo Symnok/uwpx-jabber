@@ -112,6 +112,37 @@ namespace XMPP_API.Classes.Network
             omemoPreKeys = SignalKeyDBManager.INSTANCE.getAllPreKeys(getIdAndDomain());
         }
 
+        /// <summary>
+        /// Reloads the pre keys from the DB (libsignal removes a pre key once a contact used it to establish a session)
+        /// and generates new ones if fewer than CryptoUtils.OMEMO_PRE_KEY_REPLENISH_THRESHOLD are left.
+        /// </summary>
+        /// <returns>True if new pre keys got generated and the bundle should get republished.</returns>
+        public bool refillOmemoPreKeys()
+        {
+            string accountId = getIdAndDomain();
+            List<PreKeyRecord> keys = SignalKeyDBManager.INSTANCE.getAllPreKeys(accountId);
+            if (keys.Count >= CryptoUtils.OMEMO_PRE_KEY_REPLENISH_THRESHOLD)
+            {
+                omemoPreKeys = keys;
+                return false;
+            }
+
+            // Continue with the highest id used so far to keep the ids unique:
+            uint maxId = 0;
+            foreach (PreKeyRecord key in keys)
+            {
+                maxId = Math.Max(maxId, key.getId());
+            }
+            IList<PreKeyRecord> newKeys = CryptoUtils.generateOmemoPreKeys(maxId + 1, CryptoUtils.OMEMO_PRE_KEY_COUNT - (uint)keys.Count);
+            foreach (PreKeyRecord key in newKeys)
+            {
+                SignalKeyDBManager.INSTANCE.setPreKey(key.getId(), key, accountId);
+                keys.Add(key);
+            }
+            omemoPreKeys = keys;
+            return true;
+        }
+
         public void loadSignedPreKey()
         {
             omemoSignedPreKeyPair = SignalKeyDBManager.INSTANCE.getSignedPreKey(omemoSignedPreKeyId, getIdAndDomain());
@@ -144,7 +175,7 @@ namespace XMPP_API.Classes.Network
                 string accountId = getIdAndDomain();
                 foreach (PreKeyRecord key in omemoPreKeys)
                 {
-                    SignalKeyDBManager.INSTANCE.deleteSignedPreKey(key.getId(), accountId);
+                    SignalKeyDBManager.INSTANCE.deletePreKey(key.getId(), accountId);
                 }
             }
         }

@@ -4,6 +4,8 @@ using System.Diagnostics;
 using System.Linq;
 using XMPP_API.Classes.Network.XML;
 using XMPP_API.Classes.Network.XML.Messages;
+using XMPP_API.Classes.Network.XML.Messages.XEP_0085;
+using XMPP_API.Classes.Network.XML.Messages.XEP_0384;
 
 namespace Component_Tests.Classes.XmppMessages
 {
@@ -17,6 +19,47 @@ namespace Component_Tests.Classes.XmppMessages
             MessageParser2 parser = new MessageParser2();
             List<AbstractMessage> messages = parser.parseMessages(ref msg);
             Assert.IsTrue(messages.Any((x) => x is IQErrorMessage));
+        }
+
+        [TestMethod]
+        public void Test_MessageParser2_Omemo_1()
+        {
+            // OMEMO message as send by Conversations: chat state + fallback body + encrypted element:
+            string msg = "<message xmlns='jabber:client' from='alice@example.org/phone' to='bob@example.org' type='chat' id='c1'><active xmlns='http://jabber.org/protocol/chatstates'/><body>I sent you an OMEMO encrypted message but your client doesn't seem to support that. Find more information on https://conversations.im/omemo</body><encrypted xmlns='eu.siacs.conversations.axolotl'><header sid='2005576180'><key prekey='true' rid='1234567890'>MwohBZ==</key><key rid='42'>MwohBQ==</key><iv>AAECAwQFBgcICQoL</iv></header><payload>AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA=</payload></encrypted><encryption xmlns='urn:xmpp:eme:0' name='OMEMO' namespace='eu.siacs.conversations.axolotl'/><store xmlns='urn:xmpp:hints'/><request xmlns='urn:xmpp:receipts'/></message>";
+            MessageParser2 parser = new MessageParser2();
+            List<AbstractMessage> messages = parser.parseMessages(ref msg);
+
+            Assert.IsTrue(messages.Any((x) => x is ChatStateMessage));
+            // The fallback body must not show up as a plain text message:
+            Assert.IsFalse(messages.Any((x) => x.GetType() == typeof(MessageMessage)));
+            OmemoMessageMessage omemoMsg = messages.FirstOrDefault((x) => x is OmemoMessageMessage) as OmemoMessageMessage;
+            Assert.IsNotNull(omemoMsg);
+            Assert.AreEqual(2005576180u, omemoMsg.SOURCE_DEVICE_ID);
+            Assert.AreEqual("AAECAwQFBgcICQoL", omemoMsg.BASE_64_IV);
+            Assert.AreEqual("AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA=", omemoMsg.BASE_64_PAYLOAD);
+            Assert.IsTrue(omemoMsg.hasPayload());
+            Assert.AreEqual(2, omemoMsg.KEYS.Count);
+            Assert.IsNotNull(omemoMsg.getOmemoKey(42));
+            Assert.IsFalse(omemoMsg.getOmemoKey(42).IS_PRE_KEY);
+            Assert.IsNotNull(omemoMsg.getOmemoKey(1234567890));
+            Assert.IsTrue(omemoMsg.getOmemoKey(1234567890).IS_PRE_KEY);
+            Assert.AreEqual("MwohBZ==", omemoMsg.getOmemoKey(1234567890).BASE_64_KEY);
+            Assert.IsTrue(omemoMsg.RECIPT_REQUESTED);
+        }
+
+        [TestMethod]
+        public void Test_MessageParser2_Omemo_2()
+        {
+            // Key transport message (no payload) without a chat state:
+            string msg = "<message xmlns='jabber:client' from='alice@example.org/phone' to='bob@example.org' type='chat' id='c2'><encrypted xmlns='eu.siacs.conversations.axolotl'><header sid='1'><key prekey='true' rid='2'>MwohBZ==</key><iv>AAECAwQFBgcICQoL</iv></header></encrypted><store xmlns='urn:xmpp:hints'/></message>";
+            MessageParser2 parser = new MessageParser2();
+            List<AbstractMessage> messages = parser.parseMessages(ref msg);
+
+            OmemoMessageMessage omemoMsg = messages.FirstOrDefault((x) => x is OmemoMessageMessage) as OmemoMessageMessage;
+            Assert.IsNotNull(omemoMsg);
+            Assert.IsFalse(omemoMsg.hasPayload());
+            Assert.AreEqual(1u, omemoMsg.SOURCE_DEVICE_ID);
+            Assert.AreEqual(1, omemoMsg.KEYS.Count);
         }
 
         [TestMethod]

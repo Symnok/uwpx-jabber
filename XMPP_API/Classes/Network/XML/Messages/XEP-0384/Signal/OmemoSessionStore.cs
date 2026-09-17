@@ -47,7 +47,7 @@ namespace XMPP_API.Classes.Network.XML.Messages.XEP_0384.Signal
 
         public void DeleteAllSessions(string name)
         {
-            SignalKeyDBManager.INSTANCE.deleteSessions(name);
+            SignalKeyDBManager.INSTANCE.deleteSessions(name, ACCOUNT.getIdAndDomain());
         }
 
         public void DeleteSession(SignalProtocolAddress address)

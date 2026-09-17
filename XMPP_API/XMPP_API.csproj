@@ -136,6 +136,7 @@
     <Compile Include="Classes\Network\Events\NewMUCMemberPresenceMessageEventArgs.cs" />
     <Compile Include="Classes\Network\Events\NewValidMessageEventArgs.cs" />
     <Compile Include="Classes\Network\Events\NewValidMessageEventHandler.cs" />
+    <Compile Include="Classes\Network\Events\OmemoSessionBuildErrorEventArgs.cs" />
     <Compile Include="Classes\Network\MessageCarbonsState.cs" />
     <Compile Include="Classes\Network\OmemoHelper.cs" />
     <Compile Include="Classes\Network\OmemoHelperState.cs" />
@@ -180,6 +181,8 @@
     <Compile Include="Classes\Network\XML\Messages\XEP-0004\FieldType.cs" />
     <Compile Include="Classes\Network\XML\Messages\XEP-0004\FieldOption.cs" />
     <Compile Include="Classes\Network\XML\Messages\XEP-0030\DiscoFeature.cs" />
+    <Compile Include="Classes\Network\XML\Messages\XEP-0030\DiscoInfoRequestMessage.cs" />
+    <Compile Include="Classes\Network\XML\Messages\XEP-0030\DiscoInfoResultMessage.cs" />
     <Compile Include="Classes\Network\XML\Messages\XEP-0030\DiscoIdentity.cs" />
     <Compile Include="Classes\Network\XML\Messages\XEP-0030\DiscoItem.cs" />
     <Compile Include="Classes\Network\XML\Messages\XEP-0030\DiscoRequestMessage.cs" />
@@ -204,7 +207,9 @@
     <Compile Include="Classes\Network\XML\Messages\XEP-0060\AbstractPubSubEventMessage.cs" />
     <Compile Include="Classes\Network\XML\Messages\XEP-0060\AbstractPubSubItem.cs" />
     <Compile Include="Classes\Network\XML\Messages\XEP-0060\PubSubCreateNodeMessage.cs" />
+    <Compile Include="Classes\Network\XML\Messages\XEP-0060\PubSubConfigureNodeMessage.cs" />
     <Compile Include="Classes\Network\XML\Messages\XEP-0060\PubSubDeleteNodeMessage.cs" />
+    <Compile Include="Classes\Network\XML\Messages\XEP-0060\PubSubSetNodeAffiliationMessage.cs" />
     <Compile Include="Classes\Network\XML\Messages\XEP-0060\PubSubDiscoverNodeItemsMessage.cs" />
     <Compile Include="Classes\Network\XML\Messages\XEP-0060\AbstractPubSubDiscoverNodeItemsResultMessagePubSubDiscoverNodeItemsResultMessage.cs" />
     <Compile Include="Classes\Network\XML\Messages\XEP-0060\PubSubDiscoverNodeMetadataMessage.cs" />
@@ -239,6 +244,7 @@
     <Compile Include="Classes\Network\XML\Messages\XEP-0045\MUCRole.cs" />
     <Compile Include="Classes\Network\XML\Messages\XEP-0045\MUCRoomSubjectMessage.cs" />
     <Compile Include="Classes\Network\XML\Messages\XEP-0085\ChatState.cs" />
+    <Compile Include="Classes\Network\XML\Messages\XEP-0115\EntityCapabilities.cs" />
     <Compile Include="Classes\Network\XML\Messages\XEP-0085\ChatStateMessage.cs" />
     <Compile Include="Classes\Network\XML\Messages\XEP-0280\CarbonsDisableMessage.cs" />
     <Compile Include="Classes\Network\XML\Messages\XEP-0280\CarbonsEnableMessage.cs" />

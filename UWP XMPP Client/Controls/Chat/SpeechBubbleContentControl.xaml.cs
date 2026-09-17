@@ -165,6 +165,13 @@ namespace UWP_XMPP_Client.Controls.Chat
                         toEncryp_pgb.Visibility = Visibility.Visible;
                         break;
 
+                    case MessageState.ENCRYPT_FAILED:
+                        // Warning icon - no OMEMO session could get established (contact has no OMEMO devices, ...):
+                        state_tbx.Text = "\uE7BA";
+                        stateCheck_tbx.Visibility = Visibility.Collapsed;
+                        toEncryp_pgb.Visibility = Visibility.Collapsed;
+                        break;
+
                     default:
                         state_tbx.Text = "";
                         stateCheck_tbx.Visibility = Visibility.Collapsed;

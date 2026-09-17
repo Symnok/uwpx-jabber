@@ -63,6 +63,7 @@ in ALPHA state, so expect occasional crashes and unexpected behavior.
 | Direct MUC Invitations | [XEP-0249](https://xmpp.org/extensions/xep-0249.html "XEP-0249") |
 | Message Carbons | [XEP-0280](https://xmpp.org/extensions/xep-0280.html "XEP-0280") |
 | Message Processing Hints | [XEP-0334](https://xmpp.org/extensions/xep-0334.html "XEP-0334") |
+| OMEMO Encryption (1:1 chats, legacy `eu.siacs.conversations.axolotl` namespace as used by Conversations, Gajim, Dino, Monal, ...) | [XEP-0384](https://xmpp.org/extensions/xep-0384.html "XEP-0384") |
 
 ## ToDo:
 | Name | XEPs |
@@ -74,7 +75,7 @@ in ALPHA state, so expect occasional crashes and unexpected behavior.
 | Message Archive Management | [XEP-0313](https://xmpp.org/extensions/xep-0313.html "XEP-0313") |
 | Chat Markers | [XEP-0333](https://xmpp.org/extensions/xep-0333.html "XEP-0333") |
 | HTTP File Upload | [XEP-0363](https://xmpp.org/extensions/xep-0363.html "XEP-0363") |
-| OMEMO | [XEP-0384](https://xmpp.org/extensions/xep-0384.html "XEP-0384") |
+| OMEMO for MUCs / OMEMO 2 (`urn:xmpp:omemo:2`) | [XEP-0384](https://xmpp.org/extensions/xep-0384.html "XEP-0384") |
 
 ## Installation (build it yourself):
 1. Install [Visual Studio 2017](https://www.visualstudio.com/de/downloads) with:

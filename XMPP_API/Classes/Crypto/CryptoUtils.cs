@@ -19,6 +19,14 @@ namespace XMPP_API.Classes.Crypto
         //--------------------------------------------------------Attributes:-----------------------------------------------------------------\\
         #region --Attributes--
         private static readonly NumericFingerprintGenerator FINGERPRINT_GENERATOR = new NumericFingerprintGenerator(5200);
+        /// <summary>
+        /// The number of pre keys that should get published in the OMEMO bundle (XEP-0384 recommends 100).
+        /// </summary>
+        public const uint OMEMO_PRE_KEY_COUNT = 100;
+        /// <summary>
+        /// Once fewer than this number of pre keys is left, new ones get generated and the bundle gets republished.
+        /// </summary>
+        public const uint OMEMO_PRE_KEY_REPLENISH_THRESHOLD = 80;
 
         #endregion
         //--------------------------------------------------------Constructor:----------------------------------------------------------------\\
@@ -97,7 +105,15 @@ namespace XMPP_API.Classes.Crypto
 
         public static IList<PreKeyRecord> generateOmemoPreKeys()
         {
-            return KeyHelper.generatePreKeys(0, 100);
+            return generateOmemoPreKeys(1, OMEMO_PRE_KEY_COUNT);
+        }
+
+        /// <summary>
+        /// Generates count new pre keys with the ids starting at start.
+        /// </summary>
+        public static IList<PreKeyRecord> generateOmemoPreKeys(uint start, uint count)
+        {
+            return KeyHelper.generatePreKeys(start, count);
         }
 
         public static uint generateOmemoDeviceId()

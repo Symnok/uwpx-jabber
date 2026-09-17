@@ -1,5 +1,6 @@
 ﻿using System.Xml;
 using System.Xml.Linq;
+using XMPP_API.Classes.Network.XML.Messages.XEP_0115;
 
 namespace XMPP_API.Classes.Network.XML.Messages
 {
@@ -99,6 +100,11 @@ namespace XMPP_API.Classes.Network.XML.Messages
             if (STATUS != null)
             {
                 node.Add(new XElement("status", STATUS));
+            }
+            // XEP-0115 (Entity Capabilities) - only on available presence (no type):
+            if (TYPE == null)
+            {
+                node.Add(XEP_0115.EntityCapabilities.getCapsElement());
             }
             return node;
         }

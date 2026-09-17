@@ -934,6 +934,12 @@ namespace UWP_XMPP_Client.Controls.Chat
             showChat(Chat);
             ChatTable cpy = Chat;
             Task.Run(() => ChatDBManager.INSTANCE.setChatTableValue(nameof(cpy.id), cpy.id, nameof(cpy.omemoEnabled), cpy.omemoEnabled));
+            // Grant the contact access to our OMEMO nodes up front (whitelist-forcing servers),
+            // so they can read our device list and bundle even before we send them a message:
+            if (Chat.omemoEnabled && Client != null && Chat.chatType == ChatType.CHAT)
+            {
+                Client.getOmemoHelper()?.grantOmemoNodeAccess(Chat.chatJabberId);
+            }
         }
 
         private void scrollDown_btn_Click(object sender, RoutedEventArgs e)

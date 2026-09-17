@@ -38,6 +38,22 @@ namespace XMPP_API.Classes.Network.XML.Messages.XEP_0060
             return new PubSubPublishOptions(form);
         }
 
+        /// <summary>
+        /// Publish options requesting an open access model for the node (XEP-0060 section 7.1.5).
+        /// Required e.g. for XEP-0384 (OMEMO) nodes so contacts without a presence subscription can fetch them.
+        /// </summary>
+        public static PubSubPublishOptions getOpenAccessModelPublishOptions()
+        {
+            PubSubPublishOptions options = getDefaultPublishOptions();
+            options.OPTIONS.FIELDS.Add(new Field()
+            {
+                var = "pubsub#access_model",
+                value = "open",
+                type = FieldType.NONE
+            });
+            return options;
+        }
+
         #endregion
         //--------------------------------------------------------Misc Methods:---------------------------------------------------------------\\
         #region --Misc Methods (Public)--

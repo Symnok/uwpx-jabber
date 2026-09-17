@@ -35,7 +35,7 @@ namespace XMPP_API.Classes.Network.XML.Messages.XEP_0384
 
         public OmemoBundleInformation(IdentityKey publicIdentityKey, ECPublicKey publicSignedPreKey, uint signedPreKeyId, byte[] signedPreKeySignature, IList<Tuple<uint, ECPublicKey>> publicPreKeys)
         {
-            this.id = null;
+            this.id = Consts.XML_XEP_0384_ITEM_ID_CURRENT;
             this.PUBLIC_IDENTITY_KEY = publicIdentityKey;
             this.PUBLIC_SIGNED_PRE_KEY = publicSignedPreKey;
             this.PUBLIC_PRE_KEYS = publicPreKeys;
@@ -46,6 +46,14 @@ namespace XMPP_API.Classes.Network.XML.Messages.XEP_0384
         #endregion
         //--------------------------------------------------------Set-, Get- Methods:---------------------------------------------------------\\
         #region --Set-, Get- Methods--
+        /// <summary>
+        /// Returns true if the bundle contains everything required for building a session.
+        /// </summary>
+        public bool isValid()
+        {
+            return PUBLIC_IDENTITY_KEY != null && PUBLIC_SIGNED_PRE_KEY != null && SIGNED_PRE_KEY_SIGNATURE != null && PUBLIC_PRE_KEYS.Count > 0;
+        }
+
         public PreKeyBundle getRandomPreKey(uint deviceId)
         {
             if (PUBLIC_PRE_KEYS.Count <= 0)
@@ -55,7 +63,8 @@ namespace XMPP_API.Classes.Network.XML.Messages.XEP_0384
             Random r = new Random();
             Tuple<uint, ECPublicKey> publicPreKey = PUBLIC_PRE_KEYS[r.Next(0, PUBLIC_PRE_KEYS.Count)];
 
-            return new PreKeyBundle(publicPreKey.Item1, deviceId, publicPreKey.Item1, publicPreKey.Item2, SIGNED_PRE_KEY_ID, PUBLIC_SIGNED_PRE_KEY, SIGNED_PRE_KEY_SIGNATURE, PUBLIC_IDENTITY_KEY);
+            // OMEMO uses the device id as registration id:
+            return new PreKeyBundle(deviceId, deviceId, publicPreKey.Item1, publicPreKey.Item2, SIGNED_PRE_KEY_ID, PUBLIC_SIGNED_PRE_KEY, SIGNED_PRE_KEY_SIGNATURE, PUBLIC_IDENTITY_KEY);
         }
 
         protected override XElement getContent(XNamespace ns)
@@ -117,7 +126,7 @@ namespace XMPP_API.Classes.Network.XML.Messages.XEP_0384
                             switch (n.Name)
                             {
                                 case "signedPreKeyPublic":
-                                    byte[] pubSignedPreKey = Convert.FromBase64String(n.InnerText);
+                                    byte[] pubSignedPreKey = Convert.FromBase64String(n.InnerText.Trim());
                                     PUBLIC_SIGNED_PRE_KEY = Curve.decodePoint(pubSignedPreKey, 0);
 
                                     uint.TryParse(n.Attributes["signedPreKeyId"]?.Value, out uint sigId);
@@ -125,11 +134,11 @@ namespace XMPP_API.Classes.Network.XML.Messages.XEP_0384
                                     break;
 
                                 case "signedPreKeySignature":
-                                    SIGNED_PRE_KEY_SIGNATURE = Convert.FromBase64String(n.InnerText);
+                                    SIGNED_PRE_KEY_SIGNATURE = Convert.FromBase64String(n.InnerText.Trim());
                                     break;
 
                                 case "identityKey":
-                                    byte[] identPubKey = Convert.FromBase64String(n.InnerText);
+                                    byte[] identPubKey = Convert.FromBase64String(n.InnerText.Trim());
                                     PUBLIC_IDENTITY_KEY = new IdentityKey(identPubKey, 0);
                                     break;
 
@@ -141,7 +150,7 @@ namespace XMPP_API.Classes.Network.XML.Messages.XEP_0384
                                             case "preKeyPublic":
                                                 if (uint.TryParse(n1.Attributes["preKeyId"]?.Value, out uint preKeyId))
                                                 {
-                                                    byte[] pubPreKey = Convert.FromBase64String(n.InnerText);
+                                                    byte[] pubPreKey = Convert.FromBase64String(n1.InnerText.Trim());
                                                     PUBLIC_PRE_KEYS.Add(new Tuple<uint, ECPublicKey>(preKeyId, Curve.decodePoint(pubPreKey, 0)));
                                                 }
                                                 else

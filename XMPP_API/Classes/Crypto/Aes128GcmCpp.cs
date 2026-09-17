@@ -1,4 +1,6 @@
-﻿namespace XMPP_API.Classes.Crypto
+﻿using System;
+
+namespace XMPP_API.Classes.Crypto
 {
     public class Aes128GcmCpp
     {
@@ -42,14 +44,23 @@
         {
             byte[] ciphertext = new byte[AES_GCM_WRAPPER_CPP.calcEncryptSize((uint)data.Length)];
             authTag = new byte[AUTH_TAG_SIZE_BYTES];
-            AES_GCM_WRAPPER_CPP.encrypt(ciphertext, authTag, data, key, iv);
+            int result = AES_GCM_WRAPPER_CPP.encrypt(ciphertext, authTag, data, key, iv);
+            if (result != 1)
+            {
+                throw new InvalidOperationException("AES-128 GCM encryption failed with: " + result);
+            }
             return ciphertext;
         }
 
         public byte[] decrypt(in byte[] ciphertext)
         {
             byte[] data = new byte[AES_GCM_WRAPPER_CPP.calcDecryptSize((uint)ciphertext.Length)];
-            AES_GCM_WRAPPER_CPP.decrypt(data, authTag, ciphertext, key, iv);
+            // -3 means the authentication tag did not match - the data must not be used in that case:
+            int result = AES_GCM_WRAPPER_CPP.decrypt(data, authTag, ciphertext, key, iv);
+            if (result != 1)
+            {
+                throw new InvalidOperationException("AES-128 GCM decryption failed with: " + result);
+            }
             return data;
         }
 

@@ -23,6 +23,19 @@ namespace XMPP_API.Classes.Network.XML.Messages.XEP_0384
         public string BASE_64_IV { get; private set; }
         public string BASE_64_PAYLOAD { get; private set; }
         public bool ENCRYPTED { get; private set; }
+        /// <summary>
+        /// True if the message got decrypted from a PreKeySignalMessage, i.e. the sender used one of our published pre keys
+        /// to establish a new session. The used pre key has to be replaced and the bundle republished.
+        /// </summary>
+        public bool USED_PRE_KEY { get; private set; }
+
+        /// <summary>
+        /// Fallback body for clients that don't support OMEMO (XEP-0384 section 4.6).
+        /// </summary>
+        public const string FALLBACK_BODY = "I sent you an OMEMO encrypted message but your client doesn't seem to support that. Find more information on https://conversations.im/omemo";
+
+        private const int AES_KEY_SIZE_BYTES = 16;
+        private const int AES_AUTH_TAG_SIZE_BYTES = 16;
 
         #endregion
         //--------------------------------------------------------Constructor:----------------------------------------------------------------\\
@@ -42,6 +55,9 @@ namespace XMPP_API.Classes.Network.XML.Messages.XEP_0384
         public OmemoMessageMessage(XmlNode node, CarbonCopyType ccType) : base(node, ccType)
         {
             this.KEYS = new List<OmemoKey>();
+            // The parsed <body/> (if any) is only the fallback text for clients without OMEMO support.
+            // It gets replaced with the decrypted text once decrypt(...) succeeded:
+            this.ENCRYPTED = true;
             XmlNode encryptedNode = XMLUtils.getChildNode(node, "encrypted", Consts.XML_XMLNS, Consts.XML_XEP_0384_NAMESPACE);
             if (encryptedNode != null)
             {
@@ -62,7 +78,7 @@ namespace XMPP_API.Classes.Network.XML.Messages.XEP_0384
                                 break;
 
                             case "iv":
-                                this.BASE_64_IV = n.InnerText;
+                                this.BASE_64_IV = n.InnerText?.Trim();
                                 break;
 
                             default:
@@ -71,10 +87,10 @@ namespace XMPP_API.Classes.Network.XML.Messages.XEP_0384
                     }
                 }
 
-                XmlNode payloadNode = XMLUtils.getChildNode(encryptedNode, "header");
+                XmlNode payloadNode = XMLUtils.getChildNode(encryptedNode, "payload");
                 if (payloadNode != null)
                 {
-                    this.BASE_64_PAYLOAD = payloadNode.InnerText;
+                    this.BASE_64_PAYLOAD = payloadNode.InnerText?.Trim();
                 }
             }
         }
@@ -94,6 +110,15 @@ namespace XMPP_API.Classes.Network.XML.Messages.XEP_0384
             return null;
         }
 
+        /// <summary>
+        /// Returns true if the message contains an encrypted payload.
+        /// Messages without a payload are key transport messages (XEP-0384 section 4.7) which are used to build/heal sessions only.
+        /// </summary>
+        public bool hasPayload()
+        {
+            return !string.IsNullOrEmpty(BASE_64_PAYLOAD);
+        }
+
         #endregion
         //--------------------------------------------------------Misc Methods:---------------------------------------------------------------\\
         #region --Misc Methods (Public)--
@@ -111,12 +136,13 @@ namespace XMPP_API.Classes.Network.XML.Messages.XEP_0384
             aes128Gcm.generateKey();
             aes128Gcm.generateIv();
 
-            // 2. Encrypt the message using the Aes128Gcm instance:
-            byte[] encryptedData = aes128Gcm.encrypt(Encoding.Unicode.GetBytes(MESSAGE));
+            // 2. Encrypt the message using the Aes128Gcm instance.
+            // XEP-0384 requires the plaintext to be UTF-8 encoded:
+            byte[] encryptedData = aes128Gcm.encrypt(Encoding.UTF8.GetBytes(MESSAGE ?? ""));
             BASE_64_PAYLOAD = Convert.ToBase64String(encryptedData);
             BASE_64_IV = Convert.ToBase64String(aes128Gcm.iv);
 
-            // 3. Concatenate key and authentication tag:
+            // 3. Concatenate key and authentication tag (XEP-0384 v0.3: key || tag gets encrypted for each device):
             byte[] keyAuthTag = new byte[aes128Gcm.authTag.Length + aes128Gcm.key.Length];
             Buffer.BlockCopy(aes128Gcm.key, 0, keyAuthTag, 0, aes128Gcm.key.Length);
             Buffer.BlockCopy(aes128Gcm.authTag, 0, keyAuthTag, aes128Gcm.key.Length, aes128Gcm.authTag.Length);
@@ -138,7 +164,9 @@ namespace XMPP_API.Classes.Network.XML.Messages.XEP_0384
         /// Decrypts the content of BASE_64_PAYLOAD with the given SessionCipher and saves the result in MESSAGE.
         /// Sets ENCRYPTED to false.
         /// </summary>
-        /// <param name="cipher">The SessionCipher for decrypting the content of BASE_64_PAYLOAD.</param>
+        /// <param name="omemoHelper">The OmemoHelper of the account that received the message.</param>
+        /// <param name="localOmemoDeviceId">The OMEMO device id of the local account.</param>
+        /// <returns>True if the message contains a payload and it got decrypted successfully.</returns>
         public bool decrypt(OmemoHelper omemoHelper, uint localOmemoDeviceId)
         {
             try
@@ -151,7 +179,7 @@ namespace XMPP_API.Classes.Network.XML.Messages.XEP_0384
                     return false;
                 }
 
-                // 2. Load the cipher:
+                // 2. Load the cipher and decrypt key || auth tag:
                 SignalProtocolAddress address = new SignalProtocolAddress(Utils.getBareJidFromFullJid(FROM), SOURCE_DEVICE_ID);
                 SessionCipher cipher = omemoHelper.loadCipher(address);
                 byte[] encryptedKeyAuthTag = Convert.FromBase64String(key.BASE_64_KEY);
@@ -159,7 +187,9 @@ namespace XMPP_API.Classes.Network.XML.Messages.XEP_0384
                 if (key.IS_PRE_KEY)
                 {
                     decryptedKeyAuthTag = cipher.decrypt(new PreKeySignalMessage(encryptedKeyAuthTag));
-                    // ToDo republish the bundle info and remove used pre key
+                    // The sender consumed one of our pre keys. Replace it and republish the bundle:
+                    USED_PRE_KEY = true;
+                    omemoHelper.onPreKeyMessageReceived();
                 }
                 else
                 {
@@ -173,31 +203,63 @@ namespace XMPP_API.Classes.Network.XML.Messages.XEP_0384
                     return false;
                 }
 
-                // 4. Decrypt the payload:
-                byte[] aesIv = Convert.FromBase64String(BASE_64_IV);
-                byte[] aesKey = new byte[16];
-                byte[] aesAuthTag = new byte[decryptedKeyAuthTag.Length - aesKey.Length];
+                // 4. Key transport message (no payload) - the session got established/healed, nothing to show:
+                if (!hasPayload())
+                {
+                    Logger.Info("Received OMEMO key transport message from: " + address.getName() + ':' + address.getDeviceId());
+                    ENCRYPTED = false;
+                    return false;
+                }
+
+                // 5. Split key and auth tag. Legacy (XEP-0384 < v0.3) clients did not append the auth tag to the key,
+                // but appended it to the payload instead:
+                if (decryptedKeyAuthTag.Length < AES_KEY_SIZE_BYTES)
+                {
+                    Logger.Info("Discarded received OMEMO message - invalid key length: " + decryptedKeyAuthTag.Length);
+                    return false;
+                }
+                byte[] encryptedData = Convert.FromBase64String(BASE_64_PAYLOAD);
+                byte[] aesKey = new byte[AES_KEY_SIZE_BYTES];
                 Buffer.BlockCopy(decryptedKeyAuthTag, 0, aesKey, 0, aesKey.Length);
-                Buffer.BlockCopy(decryptedKeyAuthTag, aesKey.Length, aesAuthTag, 0, aesAuthTag.Length);
+                byte[] aesAuthTag;
+                if (decryptedKeyAuthTag.Length > AES_KEY_SIZE_BYTES)
+                {
+                    aesAuthTag = new byte[decryptedKeyAuthTag.Length - AES_KEY_SIZE_BYTES];
+                    Buffer.BlockCopy(decryptedKeyAuthTag, AES_KEY_SIZE_BYTES, aesAuthTag, 0, aesAuthTag.Length);
+                }
+                else
+                {
+                    if (encryptedData.Length < AES_AUTH_TAG_SIZE_BYTES)
+                    {
+                        Logger.Info("Discarded received OMEMO message - payload too short for an auth tag: " + encryptedData.Length);
+                        return false;
+                    }
+                    aesAuthTag = new byte[AES_AUTH_TAG_SIZE_BYTES];
+                    byte[] payloadOnly = new byte[encryptedData.Length - AES_AUTH_TAG_SIZE_BYTES];
+                    Buffer.BlockCopy(encryptedData, payloadOnly.Length, aesAuthTag, 0, aesAuthTag.Length);
+                    Buffer.BlockCopy(encryptedData, 0, payloadOnly, 0, payloadOnly.Length);
+                    encryptedData = payloadOnly;
+                }
+
+                // 6. Decrypt the payload:
+                byte[] aesIv = Convert.FromBase64String(BASE_64_IV);
                 Aes128GcmCpp aes128Gcm = new Aes128GcmCpp()
                 {
                     key = aesKey,
                     authTag = aesAuthTag,
                     iv = aesIv
                 };
-
-                byte[] encryptedData = Convert.FromBase64String(BASE_64_PAYLOAD);
                 byte[] decryptedData = aes128Gcm.decrypt(encryptedData);
 
-                // 5. Convert decrypted data to Unicode string:
-                MESSAGE = Encoding.Unicode.GetString(decryptedData);
+                // 7. Convert decrypted data to an UTF-8 string:
+                MESSAGE = Encoding.UTF8.GetString(decryptedData);
 
                 ENCRYPTED = false;
                 return true;
             }
             catch (Exception e)
             {
-                Logger.Info("Discarded received OMEMO message - failed to decrypt with: " + e.Message);
+                Logger.Error("Discarded received OMEMO message from " + FROM + ':' + SOURCE_DEVICE_ID + " - failed to decrypt with: " + e.Message, e);
             }
             return false;
         }
@@ -214,10 +276,6 @@ namespace XMPP_API.Classes.Network.XML.Messages.XEP_0384
             XNamespace ns = Consts.XML_XEP_0384_NAMESPACE;
             XElement encNode = new XElement(ns + "encrypted");
 
-            encNode.Add(new XElement(ns + "payload")
-            {
-                Value = BASE_64_PAYLOAD
-            });
             XElement headerNode = new XElement(ns + "header");
             headerNode.Add(new XAttribute("sid", SOURCE_DEVICE_ID));
 
@@ -231,7 +289,28 @@ namespace XMPP_API.Classes.Network.XML.Messages.XEP_0384
                 Value = BASE_64_IV
             });
             encNode.Add(headerNode);
+
+            if (hasPayload())
+            {
+                encNode.Add(new XElement(ns + "payload")
+                {
+                    Value = BASE_64_PAYLOAD
+                });
+            }
             msgNode.Add(encNode);
+
+            // XEP-0380 (Explicit Message Encryption):
+            XNamespace emeNs = Consts.XML_XEP_0380_NAMESPACE;
+            XElement emeNode = new XElement(emeNs + "encryption");
+            emeNode.Add(new XAttribute("namespace", Consts.XML_XEP_0384_NAMESPACE));
+            emeNode.Add(new XAttribute("name", Consts.XML_XEP_0380_OMEMO_NAME));
+            msgNode.Add(emeNode);
+
+            // Fallback body for clients without OMEMO support:
+            if (hasPayload())
+            {
+                msgNode.Add(new XElement("body", FALLBACK_BODY));
+            }
 
             addMPHints(msgNode, new List<MessageProcessingHint>() { MessageProcessingHint.STORE });
 

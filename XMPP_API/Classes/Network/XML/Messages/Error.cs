@@ -9,6 +9,8 @@ namespace XMPP_API.Classes.Network.XML.Messages
         public readonly ErrorType ERROR_TYPE;
         public readonly ErrorName ERROR_NAME;
         public readonly string ERROR_MESSAGE;
+        // The raw <error/> element, e.g. for application specific conditions like <precondition-not-met/> (logging only):
+        public readonly string RAW_XML;
 
         #endregion
         //--------------------------------------------------------Constructor:----------------------------------------------------------------\\
@@ -31,6 +33,7 @@ namespace XMPP_API.Classes.Network.XML.Messages
             this.ERROR_NAME = getErrorName(n);
             this.ERROR_TYPE = getErrorType(n);
             this.ERROR_MESSAGE = '"' + n.InnerText + '"';
+            this.RAW_XML = n.OuterXml;
         }
 
         #endregion
@@ -43,7 +46,7 @@ namespace XMPP_API.Classes.Network.XML.Messages
         #region --Misc Methods (Public)--
         public override string ToString()
         {
-            return "type: " + ERROR_TYPE + ", name: " + ERROR_NAME + ", message: " + ERROR_MESSAGE;
+            return "type: " + ERROR_TYPE + ", name: " + ERROR_NAME + ", message: " + ERROR_MESSAGE + (RAW_XML is null ? "" : ", xml: " + RAW_XML);
         }
 
         #endregion

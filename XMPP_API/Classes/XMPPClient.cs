@@ -27,6 +27,7 @@ namespace XMPP_API.Classes
         public delegate void NewChatStateEventHandler(XMPPClient client, NewChatStateEventArgs args);
         public delegate void NewDiscoResponseMessageEventHandler(XMPPClient client, NewDiscoResponseMessageEventArgs args);
         public delegate void MessageSendEventHandler(XMPPClient client, MessageSendEventArgs args);
+        public delegate void OmemoSessionBuildErrorEventHandler(XMPPClient client, OmemoSessionBuildErrorEventArgs args);
         public delegate void NewBookmarksResultMessageEventHandler(XMPPClient client, NewBookmarksResultMessageEventArgs args);
         public delegate void NewMUCMemberPresenceMessageEventHandler(XMPPClient client, NewMUCMemberPresenceMessageEventArgs args);
         public delegate void NewDeliveryReceiptHandler(XMPPClient client, NewDeliveryReceiptEventArgs args);
@@ -42,6 +43,7 @@ namespace XMPP_API.Classes
         public event NewValidMessageEventHandler NewValidMessage;
         public event NewBookmarksResultMessageEventHandler NewBookmarksResultMessage;
         public event NewDeliveryReceiptHandler NewDeliveryReceipt;
+        public event OmemoSessionBuildErrorEventHandler OmemoSessionBuildError;
 
         public readonly MUCCommandHelper MUC_COMMAND_HELPER;
         public readonly PubSubCommandHelper PUB_SUB_COMMAND_HELPER;
@@ -126,6 +128,7 @@ namespace XMPP_API.Classes
                 connection.NewPresenceMessage -= Connection_ConnectionNewPresenceMessage;
                 connection.MessageSend -= Connection_MessageSend;
                 connection.NewBookmarksResultMessage -= Connection_NewBookmarksResultMessage;
+                connection.OMEMO_HELPER.SessionBuildError -= OMEMO_HELPER_SessionBuildError;
             }
 
             initConnection(account);
@@ -271,6 +274,7 @@ namespace XMPP_API.Classes
             connection.NewPresenceMessage += Connection_ConnectionNewPresenceMessage;
             connection.MessageSend += Connection_MessageSend;
             connection.NewBookmarksResultMessage += Connection_NewBookmarksResultMessage;
+            connection.OMEMO_HELPER.SessionBuildError += OMEMO_HELPER_SessionBuildError;
         }
 
         #endregion
@@ -339,6 +343,11 @@ namespace XMPP_API.Classes
         private void Connection_MessageSend(XMPPConnection2 connection, MessageSendEventArgs args)
         {
             MessageSend?.Invoke(this, args);
+        }
+
+        private void OMEMO_HELPER_SessionBuildError(OmemoHelper helper, OmemoSessionBuildErrorEventArgs args)
+        {
+            OmemoSessionBuildError?.Invoke(this, args);
         }
 
         private void Connection_NewBookmarksResultMessage(XMPPConnection2 connection, NewBookmarksResultMessageEventArgs args)

@@ -184,6 +184,18 @@ namespace XMPP_API.Classes.Network.XML
                         XmlAttribute typeAtt = XMLUtils.getAttribute(n, "type");
                         switch (typeAtt?.InnerText)
                         {
+                            case IQMessage.GET:
+                                // XEP-0030 (disco#info request), e.g. resolving our XEP-0115 caps:
+                                if (XMLUtils.getChildNode(n, "query", Consts.XML_XMLNS, Consts.XML_XEP_0030_INFO_NAMESPACE) != null)
+                                {
+                                    messages.Add(new DiscoInfoRequestMessage(n));
+                                }
+                                else
+                                {
+                                    messages.Add(new IQMessage(n));
+                                }
+                                break;
+
                             case IQMessage.SET:
                                 // Rooster:
                                 if (XMLUtils.getChildNode(n, "query", Consts.XML_XMLNS, Consts.XML_ROSTER_NAMESPACE) != null)
@@ -412,19 +424,27 @@ namespace XMPP_API.Classes.Network.XML
 
         private void parseMessageMessage(List<AbstractMessage> messages, XmlNode n, CarbonCopyType ccType)
         {
+            // XEP-0384 (OMEMO Encryption):
+            // Has to be checked first, since OMEMO messages usually also contain a chat state and a fallback <body/>:
+            bool isOmemo = XMLUtils.getChildNode(n, "encrypted", Consts.XML_XMLNS, Consts.XML_XEP_0384_NAMESPACE) != null;
+
             // XEP-0085 (chat state):
             if (XMLUtils.getChildNode(n, Consts.XML_XMLNS, Consts.XML_XEP_0085_NAMESPACE) != null)
             {
                 messages.Add(new ChatStateMessage(n));
 
+                if (isOmemo)
+                {
+                    messages.Add(new OmemoMessageMessage(n, ccType));
+                }
                 // Chat state messages can contain a body:
-                if (XMLUtils.getChildNode(n, "body") != null)
+                else if (XMLUtils.getChildNode(n, "body") != null)
                 {
                     messages.Add(new MessageMessage(n, ccType));
                 }
             }
             // XEP-0384 (OMEMO Encryption):
-            else if (XMLUtils.getChildNode(n, "encrypted", Consts.XML_XMLNS, Consts.XML_XEP_0384_NAMESPACE) != null)
+            else if (isOmemo)
             {
                 messages.Add(new OmemoMessageMessage(n, ccType));
             }

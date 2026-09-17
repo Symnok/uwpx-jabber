@@ -23,6 +23,7 @@ namespace XMPP_API.Classes.Network.XML.Messages.XEP_0384.Signal.Session
         private List<uint> toDoDevicesRemote;
         private List<uint> toDoDevicesOwn;
         private SignalProtocolAddress curAddress;
+        private bool deviceListRetried;
         private readonly OmemoSession SESSION;
         private MessageResponseHelper<IQMessage> requestDeviceListHelper;
         private MessageResponseHelper<IQMessage> requestBundleInfoHelper;
@@ -68,18 +69,11 @@ namespace XMPP_API.Classes.Network.XML.Messages.XEP_0384.Signal.Session
         #region --Misc Methods (Public)--
         public void start(OmemoDeviceListSubscriptionState subscriptionState)
         {
-            switch (subscriptionState)
-            {
-                case OmemoDeviceListSubscriptionState.SUBSCRIBED:
-                    // Because we are subscribed, the device list should be up to date:
-                    List<uint> devices = OmemoDeviceDBManager.INSTANCE.getDeviceIds(CHAT_JID, BARE_ACCOUNT_JID);
-                    createSessionsForDevices(devices);
-                    break;
-
-                default:
-                    requestDeviceList();
-                    break;
-            }
+            // Request the current device list from the contact. On servers like ejabberd retrieving the
+            // node requires a subscription (it answers 'closed-node'/'not-allowed' otherwise), so on a
+            // non-fatal error we subscribe and retry once, then fall back to the cached list.
+            deviceListRetried = false;
+            requestDeviceList();
         }
 
         public void Dispose()
@@ -101,12 +95,16 @@ namespace XMPP_API.Classes.Network.XML.Messages.XEP_0384.Signal.Session
                 requestDeviceListHelper = null;
             }
 
-            requestDeviceListHelper = new MessageResponseHelper<IQMessage>(CONNECTION, onRequestDeviceListMessage, onTimeout);
-            OmemoRequestDeviceListMessage msg = new OmemoRequestDeviceListMessage(BARE_ACCOUNT_JID, CHAT_JID);
+            requestDeviceListHelper = OMEMO_HELPER.newResponseHelper(onRequestDeviceListMessage, onTimeout);
+            OmemoRequestDeviceListMessage msg = new OmemoRequestDeviceListMessage(FULL_ACCOUNT_JID, CHAT_JID);
             requestDeviceListHelper.start(msg);
         }
 
-        private void subscribeToDeviceList()
+        /// <summary>
+        /// Subscribes to the contact's device list node and retries the device list request once the
+        /// subscription is established. ejabberd only serves a PEP node's items to its subscribers.
+        /// </summary>
+        private void subscribeThenRetryDeviceList()
         {
             setState(OmemoSessionBuildHelperState.SUBSCRIBING_TO_DEVICE_LIST);
             if (subscribeToDeviceListHelper != null)
@@ -114,8 +112,21 @@ namespace XMPP_API.Classes.Network.XML.Messages.XEP_0384.Signal.Session
                 subscribeToDeviceListHelper?.Dispose();
                 subscribeToDeviceListHelper = null;
             }
+            subscribeToDeviceListHelper = OMEMO_HELPER.newResponseHelper(onSubscribeThenRetryMessage, onTimeout);
+            OmemoSubscribeToDeviceListMessage msg = new OmemoSubscribeToDeviceListMessage(FULL_ACCOUNT_JID, BARE_ACCOUNT_JID, CHAT_JID);
+            subscribeToDeviceListHelper.start(msg);
+        }
 
-            subscribeToDeviceListHelper = new MessageResponseHelper<IQMessage>(CONNECTION, onSubscribeToDeviceListMessage, onTimeout);
+        private void subscribeToDeviceList()
+        {
+            if (subscribeToDeviceListHelper != null)
+            {
+                subscribeToDeviceListHelper?.Dispose();
+                subscribeToDeviceListHelper = null;
+            }
+
+            // Runs in parallel to the bundle requests, so it must not touch STATE or the shared onTimeout():
+            subscribeToDeviceListHelper = OMEMO_HELPER.newResponseHelper(onSubscribeToDeviceListMessage, onSubscribeToDeviceListTimeout);
             OmemoSubscribeToDeviceListMessage msg = new OmemoSubscribeToDeviceListMessage(FULL_ACCOUNT_JID, BARE_ACCOUNT_JID, CHAT_JID);
             subscribeToDeviceListHelper.start(msg);
         }
@@ -129,7 +140,7 @@ namespace XMPP_API.Classes.Network.XML.Messages.XEP_0384.Signal.Session
                 requestBundleInfoHelper = null;
             }
 
-            requestBundleInfoHelper = new MessageResponseHelper<IQMessage>(CONNECTION, onRequestBundleInformationMessage, onTimeout);
+            requestBundleInfoHelper = OMEMO_HELPER.newResponseHelper(onRequestBundleInformationMessage, onTimeout);
             OmemoRequestBundleInformationMessage msg = new OmemoRequestBundleInformationMessage(FULL_ACCOUNT_JID, curAddress.getName(), curAddress.getDeviceId());
             requestBundleInfoHelper.start(msg);
         }
@@ -139,37 +150,61 @@ namespace XMPP_API.Classes.Network.XML.Messages.XEP_0384.Signal.Session
             switch (STATE)
             {
                 case OmemoSessionBuildHelperState.REQUESTING_DEVICE_LIST:
-                    Logger.Error("[OmemoSessionBuildHelper] Failed to establish session - " + CHAT_JID + " didn't respond in time!");
-                    setState(OmemoSessionBuildHelperState.ERROR);
-                    ON_SESSION_RESULT(this, new OmemoSessionBuildResult(OmemoSessionBuildError.REQUEST_DEVICE_LIST_TIMEOUT));
+                    Logger.Warn("[OmemoSessionBuildHelper] " + CHAT_JID + " didn't respond in time to the device list request - using the cached device list.");
+                    useCachedDeviceList(OmemoSessionBuildError.REQUEST_DEVICE_LIST_TIMEOUT);
                     break;
 
                 case OmemoSessionBuildHelperState.SUBSCRIBING_TO_DEVICE_LIST:
-                    Logger.Error("[OmemoSessionBuildHelper] Failed to establish session - " + CHAT_JID + " didn't respond in time!");
-                    setState(OmemoSessionBuildHelperState.ERROR);
-                    ON_SESSION_RESULT(this, new OmemoSessionBuildResult(OmemoSessionBuildError.SUBSCRIBE_TO_DEVICE_LIST_TIMEOUT));
+                    Logger.Warn("[OmemoSessionBuildHelper] Subscribing to the device list node timed out for " + CHAT_JID + " - using the cached device list.");
+                    useCachedDeviceList(OmemoSessionBuildError.SUBSCRIBE_TO_DEVICE_LIST_TIMEOUT);
                     break;
 
                 case OmemoSessionBuildHelperState.REQUESTING_BUNDLE_INFORMATION:
-                    Logger.Error("[OmemoSessionBuildHelper] Failed to establish session - " + curAddress.getName() + ':' + curAddress.getDeviceId() + " didn't respond in time!");
-                    setState(OmemoSessionBuildHelperState.ERROR);
-                    ON_SESSION_RESULT(this, new OmemoSessionBuildResult(OmemoSessionBuildError.REQUEST_BUNDLE_INFORMATION_TIMEOUT));
+                    Logger.Error("[OmemoSessionBuildHelper] Failed to fetch bundle information - " + curAddress.getName() + ':' + curAddress.getDeviceId() + " didn't respond in time!");
+                    createSessionForNextDevice();
                     break;
+            }
+        }
+
+        private void onSubscribeToDeviceListTimeout()
+        {
+            Logger.Warn("[OmemoSessionBuildHelper] Failed to subscribe to device list node - " + CHAT_JID + " didn't respond in time!");
+            OmemoDeviceDBManager.INSTANCE.setDeviceListSubscription(new OmemoDeviceListSubscriptionTable(CHAT_JID, BARE_ACCOUNT_JID, OmemoDeviceListSubscriptionState.NONE, DateTime.Now));
+        }
+
+        /// <summary>
+        /// Falls back to the device list stored in the DB, if requesting it from the contact failed.
+        /// </summary>
+        private void useCachedDeviceList(OmemoSessionBuildError errorIfEmpty)
+        {
+            List<uint> devices = OmemoDeviceDBManager.INSTANCE.getDeviceIds(CHAT_JID, BARE_ACCOUNT_JID);
+            if (devices.Count > 0)
+            {
+                createSessionsForDevices(devices);
+            }
+            else
+            {
+                Logger.Error("[OmemoSessionBuildHelper] Failed to establish session - no cached devices for: " + CHAT_JID);
+                setState(OmemoSessionBuildHelperState.ERROR);
+                ON_SESSION_RESULT(this, new OmemoSessionBuildResult(errorIfEmpty));
             }
         }
 
         private void createSessionsForDevices(List<uint> remoteDevices)
         {
             // Add remote devices:
-            toDoDevicesRemote = remoteDevices;
+            toDoDevicesRemote = new List<uint>(remoteDevices);
 
-            // Add own devices:
+            // Add own devices (all other devices of the local account), so the message shows up there too:
             toDoDevicesOwn = new List<uint>();
-            for (int i = 0; i < OMEMO_HELPER.DEVICES.DEVICES.Count; i++)
+            if (OMEMO_HELPER.DEVICES != null)
             {
-                if (OMEMO_HELPER.DEVICES.DEVICES[i] != CONNECTION.account.omemoDeviceId)
+                foreach (uint deviceId in OMEMO_HELPER.DEVICES.DEVICES)
                 {
-                    toDoDevicesOwn.Add(OMEMO_HELPER.DEVICES.DEVICES[i]);
+                    if (deviceId != CONNECTION.account.omemoDeviceId)
+                    {
+                        toDoDevicesOwn.Add(deviceId);
+                    }
                 }
             }
 
@@ -205,7 +240,13 @@ namespace XMPP_API.Classes.Network.XML.Messages.XEP_0384.Signal.Session
                     toDoDevicesRemote.RemoveAt(0);
                 }
 
-                if (OMEMO_HELPER.containsSession(curAddress))
+                if (SESSION.DEVICE_SESSIONS.ContainsKey(curAddress.getDeviceId()))
+                {
+                    // Same device id for an own and a remote device - can't be represented in one OMEMO header:
+                    Logger.Warn("[OmemoSessionBuildHelper] Skipping device " + curAddress.getName() + ':' + curAddress.getDeviceId() + " - device id already in use.");
+                    createSessionForNextDevice();
+                }
+                else if (OMEMO_HELPER.containsSession(curAddress))
                 {
                     SessionCipher cipher = OMEMO_HELPER.loadCipher(curAddress);
                     SESSION.DEVICE_SESSIONS.Add(curAddress.getDeviceId(), cipher);
@@ -228,12 +269,15 @@ namespace XMPP_API.Classes.Network.XML.Messages.XEP_0384.Signal.Session
             if (msg is OmemoDeviceListResultMessage devMsg)
             {
                 // Update devices in DB:
-                string chatJid = Utils.getBareJidFromFullJid(devMsg.getFrom());
-                OmemoDeviceDBManager.INSTANCE.setDevices(devMsg.DEVICES, chatJid, BARE_ACCOUNT_JID);
+                OmemoDeviceDBManager.INSTANCE.setDevices(devMsg.DEVICES, CHAT_JID, BARE_ACCOUNT_JID);
 
                 if (devMsg.DEVICES.DEVICES.Count > 0)
                 {
-                    subscribeToDeviceList();
+                    OmemoDeviceListSubscriptionTable subscription = OmemoDeviceDBManager.INSTANCE.getDeviceListSubscription(CHAT_JID, BARE_ACCOUNT_JID);
+                    if (subscription.state != OmemoDeviceListSubscriptionState.SUBSCRIBED)
+                    {
+                        subscribeToDeviceList();
+                    }
                     createSessionsForDevices(devMsg.DEVICES.DEVICES);
                 }
                 else
@@ -252,12 +296,50 @@ namespace XMPP_API.Classes.Network.XML.Messages.XEP_0384.Signal.Session
                     setState(OmemoSessionBuildHelperState.ERROR);
                     ON_SESSION_RESULT(this, new OmemoSessionBuildResult(OmemoSessionBuildError.TARGET_DOES_NOT_SUPPORT_OMEMO));
                 }
+                else if (!deviceListRetried)
+                {
+                    Logger.Warn("[OmemoSessionBuildHelper] Request device list failed (" + errMsg.ERROR_OBJ.ToString() + ") - subscribing to the node and retrying.");
+                    subscribeThenRetryDeviceList();
+                }
                 else
                 {
-                    Logger.Error("[OmemoSessionBuildHelper] Failed to establish session - request device list failed: " + errMsg.ERROR_OBJ.ToString());
-                    setState(OmemoSessionBuildHelperState.ERROR);
-                    ON_SESSION_RESULT(this, new OmemoSessionBuildResult(OmemoSessionBuildError.REQUEST_DEVICE_LIST_IQ_ERROR));
+                    Logger.Warn("[OmemoSessionBuildHelper] Request device list failed again - using the cached device list: " + errMsg.ERROR_OBJ.ToString());
+                    useCachedDeviceList(OmemoSessionBuildError.REQUEST_DEVICE_LIST_IQ_ERROR);
                 }
+                return true;
+            }
+            return false;
+        }
+
+        private bool onSubscribeThenRetryMessage(IQMessage msg)
+        {
+            if (STATE != OmemoSessionBuildHelperState.SUBSCRIBING_TO_DEVICE_LIST)
+            {
+                return true;
+            }
+
+            deviceListRetried = true;
+            if (msg is PubSubSubscriptionMessage subMsg)
+            {
+                if (subMsg.SUBSCRIPTION == PubSubSubscription.SUBSCRIBED)
+                {
+                    OmemoDeviceDBManager.INSTANCE.setDeviceListSubscription(new OmemoDeviceListSubscriptionTable(CHAT_JID, BARE_ACCOUNT_JID, OmemoDeviceListSubscriptionState.SUBSCRIBED, DateTime.Now));
+                    Logger.Info("[OmemoSessionBuildHelper] Subscribed to " + CHAT_JID + " device list node - retrying the device list request.");
+                    requestDeviceList();
+                }
+                else
+                {
+                    Logger.Warn("[OmemoSessionBuildHelper] Failed to subscribe to " + CHAT_JID + " device list node - returned: " + subMsg.SUBSCRIPTION + ". Using the cached device list.");
+                    OmemoDeviceDBManager.INSTANCE.setDeviceListSubscription(new OmemoDeviceListSubscriptionTable(CHAT_JID, BARE_ACCOUNT_JID, OmemoDeviceListSubscriptionState.NONE, DateTime.Now));
+                    useCachedDeviceList(OmemoSessionBuildError.SUBSCRIBE_TO_DEVICE_LIST_IQ_ERROR);
+                }
+                return true;
+            }
+            else if (msg is IQErrorMessage errMsg)
+            {
+                Logger.Warn("[OmemoSessionBuildHelper] Failed to subscribe to " + CHAT_JID + " device list node (" + errMsg.ERROR_OBJ.ToString() + "). Using the cached device list.");
+                OmemoDeviceDBManager.INSTANCE.setDeviceListSubscription(new OmemoDeviceListSubscriptionTable(CHAT_JID, BARE_ACCOUNT_JID, OmemoDeviceListSubscriptionState.ERROR, DateTime.Now));
+                useCachedDeviceList(OmemoSessionBuildError.SUBSCRIBE_TO_DEVICE_LIST_IQ_ERROR);
                 return true;
             }
             return false;
@@ -265,11 +347,6 @@ namespace XMPP_API.Classes.Network.XML.Messages.XEP_0384.Signal.Session
 
         private bool onSubscribeToDeviceListMessage(IQMessage msg)
         {
-            if (STATE != OmemoSessionBuildHelperState.SUBSCRIBING_TO_DEVICE_LIST)
-            {
-                return true;
-            }
-
             if (msg is PubSubSubscriptionMessage subMsg)
             {
                 if (subMsg.SUBSCRIPTION != PubSubSubscription.SUBSCRIBED)
@@ -308,10 +385,25 @@ namespace XMPP_API.Classes.Network.XML.Messages.XEP_0384.Signal.Session
 
             if (msg is OmemoBundleInformationResultMessage bundleMsg)
             {
-                Logger.Info("[OmemoSessionBuildHelper] Session with " + curAddress.getName() + ':' + curAddress.getDeviceId() + " established.");
-                SignalProtocolAddress address = OMEMO_HELPER.newSession(CHAT_JID, bundleMsg);
-                SessionCipher cipher = OMEMO_HELPER.loadCipher(address);
-                SESSION.DEVICE_SESSIONS.Add(curAddress.getDeviceId(), cipher);
+                if (bundleMsg.BUNDLE_INFO.isValid())
+                {
+                    try
+                    {
+                        // The session has to be stored for the JID the bundle belongs to (own JID for own devices):
+                        SignalProtocolAddress address = OMEMO_HELPER.newSession(curAddress.getName(), curAddress.getDeviceId(), bundleMsg.BUNDLE_INFO.getRandomPreKey(curAddress.getDeviceId()));
+                        SessionCipher cipher = OMEMO_HELPER.loadCipher(address);
+                        SESSION.DEVICE_SESSIONS.Add(curAddress.getDeviceId(), cipher);
+                        Logger.Info("[OmemoSessionBuildHelper] Session with " + curAddress.getName() + ':' + curAddress.getDeviceId() + " established.");
+                    }
+                    catch (Exception e)
+                    {
+                        Logger.Error("[OmemoSessionBuildHelper] Failed to establish session with " + curAddress.getName() + ':' + curAddress.getDeviceId() + " - invalid bundle: " + e.Message, e);
+                    }
+                }
+                else
+                {
+                    Logger.Error("[OmemoSessionBuildHelper] Failed to establish session with " + curAddress.getName() + ':' + curAddress.getDeviceId() + " - bundle incomplete.");
+                }
                 createSessionForNextDevice();
                 return true;
             }

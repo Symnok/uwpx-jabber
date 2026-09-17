@@ -208,6 +208,7 @@ namespace Data_Manager2.Classes
             c.MessageSend += C_MessageSend;
             c.NewBookmarksResultMessage += C_NewBookmarksResultMessage;
             c.NewDeliveryReceipt += C_NewDeliveryReceipt;
+            c.OmemoSessionBuildError += C_OmemoSessionBuildError;
             c.getXMPPAccount().PropertyChanged += ConnectionHandler_PropertyChanged;
             return c;
         }
@@ -224,6 +225,7 @@ namespace Data_Manager2.Classes
             c.MessageSend -= C_MessageSend;
             c.NewBookmarksResultMessage -= C_NewBookmarksResultMessage;
             c.NewDeliveryReceipt -= C_NewDeliveryReceipt;
+            c.OmemoSessionBuildError -= C_OmemoSessionBuildError;
             c.getXMPPAccount().PropertyChanged -= ConnectionHandler_PropertyChanged;
         }
 
@@ -571,6 +573,11 @@ namespace Data_Manager2.Classes
                 {
                     return;
                 }
+                // Make sure replies get encrypted for the sending device too:
+                if (omemoMessage.CC_TYPE != CarbonCopyType.SENT)
+                {
+                    client.getOmemoHelper().onOmemoMessageReceived(from, omemoMessage.SOURCE_DEVICE_ID);
+                }
             }
 
             string to = Utils.getBareJidFromFullJid(msg.getTo());
@@ -763,6 +770,15 @@ namespace Data_Manager2.Classes
         private void C_MessageSend(XMPPClient client, MessageSendEventArgs args)
         {
             ChatDBManager.INSTANCE.updateChatMessageState(args.CHAT_MESSAGE_ID, MessageState.SEND);
+        }
+
+        private void C_OmemoSessionBuildError(XMPPClient client, OmemoSessionBuildErrorEventArgs args)
+        {
+            Logger.Error("Failed to build OMEMO session for " + args.CHAT_JID + " with: " + args.ERROR + " - marking " + args.CHAT_MESSAGE_IDS.Count + " message(s) as failed.");
+            foreach (string chatMessageId in args.CHAT_MESSAGE_IDS)
+            {
+                ChatDBManager.INSTANCE.updateChatMessageState(chatMessageId, MessageState.ENCRYPT_FAILED);
+            }
         }
 
         private void C_NewBookmarksResultMessage(XMPPClient client, NewBookmarksResultMessageEventArgs args)

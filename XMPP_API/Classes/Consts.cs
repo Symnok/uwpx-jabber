@@ -72,11 +72,20 @@ namespace XMPP_API.Classes
         // XEP-0384 (OMEMO Encryption):
         public const string XML_XEP_0384_NAMESPACE = "eu.siacs.conversations.axolotl";
         public const string XML_XEP_0384_DEVICE_LIST_NODE = "eu.siacs.conversations.axolotl.devicelist";
+        // The device list node with the XEP-0163 +notify suffix, advertised via XEP-0115 so the server pushes contacts device lists:
+        public const string XML_XEP_0384_DEVICE_LIST_NODE_NOTIFY = "eu.siacs.conversations.axolotl.devicelist+notify";
         public const string XML_XEP_0384_BUNDLE_INFO_NODE = "eu.siacs.conversations.axolotl.bundles:";
+        // PEP item id for the device list and bundle nodes (XEP-0384 section 4.1: "current")
+        public const string XML_XEP_0384_ITEM_ID_CURRENT = "current";
+        // XEP-0380 (Explicit Message Encryption):
+        public const string XML_XEP_0380_NAMESPACE = "urn:xmpp:eme:0";
+        public const string XML_XEP_0380_OMEMO_NAME = "OMEMO";
         // XEP-0280 (Message Carbons):
         public const string XML_XEP_0280_NAMESPACE = "urn:xmpp:carbons:2";
         public const string XML_XEP_0280_NAMESPACE_FORWARDED = "urn:xmpp:forward:0";
         // XEP-0334 (Message Processing Hints):
         public const string XML_XEP_0334_NAMESPACE = "urn:xmpp:hints";
+        // XEP-0115 (Entity Capabilities):
+        public const string XML_XEP_0115_NAMESPACE = "http://jabber.org/protocol/caps";
     }
 }

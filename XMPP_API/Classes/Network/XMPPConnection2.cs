@@ -12,6 +12,7 @@ using XMPP_API.Classes.Network.XML.DBEntries;
 using XMPP_API.Classes.Network.XML.DBManager;
 using XMPP_API.Classes.Network.XML.Messages;
 using XMPP_API.Classes.Network.XML.Messages.Processor;
+using XMPP_API.Classes.Network.XML.Messages.XEP_0030;
 using XMPP_API.Classes.Network.XML.Messages.XEP_0048;
 using XMPP_API.Classes.Network.XML.Messages.XEP_0384;
 
@@ -564,6 +565,12 @@ namespace XMPP_API.Classes.Network
                 else if (msg is OmemoDeviceListEventMessage deviceListEvent)
                 {
                     OMEMO_HELPER.onOmemoDeviceListEventMessage(deviceListEvent);
+                }
+                // XEP-0030/0115: answer disco#info requests so the server learns our capabilities (e.g. OMEMO +notify):
+                else if (msg is DiscoInfoRequestMessage discoInfoRequest)
+                {
+                    DiscoInfoResultMessage response = new DiscoInfoResultMessage(account.getIdDomainAndResource(), discoInfoRequest.getFrom(), discoInfoRequest.ID, discoInfoRequest.NODE);
+                    await sendAsync(response, false, true);
                 }
             }
         }
