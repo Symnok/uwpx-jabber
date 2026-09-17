@@ -58,11 +58,7 @@ namespace UWP_XMPP_Client.Dialogs
                 accountSelection_asc.showErrorMessage("No account selected!");
                 return false;
             }
-            if (client.getXMPPAccount().getIdAndDomain().Equals(jabberId_tbx.Text))
-            {
-                accountSelection_asc.showErrorMessage("You can't start a chat with your self!");
-                return false;
-            }
+            // A chat with your own JID is a valid "Note to Self" chat, so it is allowed.
             if (!Utils.isBareJid(jabberId_tbx.Text))
             {
                 accountSelection_asc.showErrorMessage("Invalid JabberID!");

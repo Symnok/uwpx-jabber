@@ -221,11 +221,14 @@ namespace UWP_XMPP_Client.Pages
             }
             else
             {
-                if (addToRoster)
+                // A "Note to Self" chat must not add the account to its own roster or request a
+                // presence subscription to itself:
+                bool isSelfChat = Equals(jID, client.getXMPPAccount().getIdAndDomain());
+                if (addToRoster && !isSelfChat)
                 {
                     await client.addToRosterAsync(jID).ConfigureAwait(false);
                 }
-                if (requestSubscription)
+                if (requestSubscription && !isSelfChat)
                 {
                     await client.requestPresenceSubscriptionAsync(jID).ConfigureAwait(false);
                 }

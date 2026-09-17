@@ -365,6 +365,37 @@ namespace XMPP_API.Classes.Network
             });
         }
 
+        /// <summary>
+        /// Called when an OMEMO message arrives from another of our own devices (Note to Self). Ensures that
+        /// device is present in our own OMEMO device list and republishes it if it was missing, so our devices
+        /// encrypt for each other. Republishing also nudges the other device to re-read the (now complete) list.
+        /// </summary>
+        public void onOwnOmemoDeviceSeen(uint deviceId)
+        {
+            if (STATE != OmemoHelperState.ENABLED || deviceId == 0 || deviceId == CONNECTION.account.omemoDeviceId || DEVICES == null)
+            {
+                return;
+            }
+            if (DEVICES.DEVICES.Contains(deviceId))
+            {
+                return;
+            }
+            Logger.Info("[OMEMO HELPER](" + CONNECTION.account.getIdAndDomain() + ") Learned own device " + deviceId + " from an incoming message - adding it to the device list.");
+            DEVICES.DEVICES.Add(deviceId);
+            OmemoSetDeviceListMessage msg = new OmemoSetDeviceListMessage(CONNECTION.account.getIdDomainAndResource(), DEVICES, openAccessModelSupported);
+            Task.Run(async () =>
+            {
+                try
+                {
+                    await CONNECTION.sendAsync(msg, false, false);
+                }
+                catch (Exception e)
+                {
+                    Logger.Warn("[OMEMO HELPER](" + CONNECTION.account.getIdAndDomain() + ") Failed to publish updated device list: " + e.Message);
+                }
+            });
+        }
+
         public void onOmemoDeviceListEventMessage(OmemoDeviceListEventMessage msg)
         {
             string chatJid = msg.getFrom() == null ? CONNECTION.account.getIdAndDomain() : Utils.getBareJidFromFullJid(msg.getFrom());

@@ -42,7 +42,12 @@ namespace XMPP_API.Classes.Network.XML.Messages.XEP_0384.Signal
         public bool ContainsSession(SignalProtocolAddress address)
         {
             SessionRecord session = SignalKeyDBManager.INSTANCE.getSession(address, ACCOUNT.getIdAndDomain());
-            return session != null && session.getSessionState().hasSenderChain() && session.getSessionState().getSessionVersion() == CiphertextMessage.CURRENT_VERSION;
+            // Do NOT require hasSenderChain(): a session established by RECEIVING a (pre key) message has a
+            // receiver chain but no sender chain until we send. It is still usable for encryption (the sender
+            // chain is derived on the first encrypt). Requiring a sender chain made us discard a perfectly good
+            // session and re-fetch the peer's bundle - which fails and drops the recipient if the peer never
+            // published a readable bundle (e.g. a Note to Self device on a whitelist-only server).
+            return session != null && session.getSessionState().getSessionVersion() == CiphertextMessage.CURRENT_VERSION;
         }
 
         public void DeleteAllSessions(string name)

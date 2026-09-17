@@ -104,6 +104,19 @@ namespace XMPP_API.Classes.Network
             return null;
         }
 
+        /// <summary>
+        /// The OMEMO fingerprint of this account's identity key as lowercase hex (64 chars),
+        /// as shown by Conversations, Dino, monocles, ... for verification.
+        /// </summary>
+        public string getOmemoFingerprintHex()
+        {
+            if (omemoIdentityKeyPair != null)
+            {
+                return CryptoUtils.getFingerprintHex(omemoIdentityKeyPair.getPublicKey());
+            }
+            return null;
+        }
+
         #endregion
         //--------------------------------------------------------Misc Methods:---------------------------------------------------------------\\
         #region --Misc Methods (Public)--

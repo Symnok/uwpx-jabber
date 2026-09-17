@@ -192,8 +192,17 @@ namespace XMPP_API.Classes.Network.XML.Messages.XEP_0384.Signal.Session
 
         private void createSessionsForDevices(List<uint> remoteDevices)
         {
-            // Add remote devices:
-            toDoDevicesRemote = new List<uint>(remoteDevices);
+            // Add remote devices, but never our own sending device - we must not encrypt for ourselves.
+            // This matters for a Note to Self chat, where the contact's device list is our own and therefore
+            // contains our sending device.
+            toDoDevicesRemote = new List<uint>();
+            foreach (uint deviceId in remoteDevices)
+            {
+                if (deviceId != CONNECTION.account.omemoDeviceId)
+                {
+                    toDoDevicesRemote.Add(deviceId);
+                }
+            }
 
             // Add own devices (all other devices of the local account), so the message shows up there too:
             toDoDevicesOwn = new List<uint>();

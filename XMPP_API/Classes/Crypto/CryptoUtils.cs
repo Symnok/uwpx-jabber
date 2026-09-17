@@ -141,6 +141,25 @@ namespace XMPP_API.Classes.Crypto
             return FINGERPRINT_GENERATOR.createFor(accountId, key, accountId, key);
         }
 
+        /// <summary>
+        /// Returns the OMEMO fingerprint of an identity key as lowercase hex, matching the format shown by
+        /// Conversations, Dino, Gajim, monocles, ... The leading DJB type byte (0x05) is dropped, leaving the
+        /// 32 byte Curve25519 public key as 64 hex characters.
+        /// </summary>
+        public static string getFingerprintHex(IdentityKey identityKey)
+        {
+            if (identityKey == null)
+            {
+                return null;
+            }
+            string hex = byteArrayToHexString(identityKey.serialize());
+            if (hex.Length >= 2 && hex[0] == '0' && hex[1] == '5')
+            {
+                hex = hex.Substring(2);
+            }
+            return hex;
+        }
+
         public static byte[] hexStringToByteArray(string hex)
         {
             return Enumerable.Range(0, hex.Length)

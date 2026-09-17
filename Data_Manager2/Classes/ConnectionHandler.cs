@@ -568,6 +568,14 @@ namespace Data_Manager2.Classes
             // Check if device id is valid and if, decrypt the OMEMO messages:
             if (msg is OmemoMessageMessage omemoMessage)
             {
+                // Note to Self: a message from another of our own devices. Make sure that device is part of
+                // our OMEMO device list (even if we cannot decrypt this one), so our devices encrypt for each
+                // other and the device list stays complete. Done before the decrypt so it also runs on failure.
+                if (Equals(from, client.getXMPPAccount().getIdAndDomain()))
+                {
+                    client.getOmemoHelper().onOwnOmemoDeviceSeen(omemoMessage.SOURCE_DEVICE_ID);
+                }
+
                 // Decryption failed:
                 if (!omemoMessage.decrypt(client.getOmemoHelper(), client.getXMPPAccount().omemoDeviceId))
                 {

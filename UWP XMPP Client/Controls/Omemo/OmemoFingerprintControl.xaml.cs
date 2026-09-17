@@ -1,6 +1,4 @@
-﻿using org.whispersystems.libsignal.fingerprint;
-using System.Text;
-using System.Text.RegularExpressions;
+﻿using System.Text.RegularExpressions;
 using UWP_XMPP_Client.Classes;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
@@ -11,51 +9,39 @@ namespace UWP_XMPP_Client.Controls.Omemo
     {
         //--------------------------------------------------------Attributes:-----------------------------------------------------------------\\
         #region --Attributes--
-        public Fingerprint MyFingerprint
+        /// <summary>
+        /// The OMEMO fingerprint as lowercase hex (the 32 byte identity key, 64 hex chars), matching the
+        /// format shown by Conversations, Dino, monocles, ... - not the Signal numeric safety number.
+        /// </summary>
+        public string FingerprintHex
         {
-            get { return (Fingerprint)GetValue(MyFingerprintProperty); }
+            get { return (string)GetValue(FingerprintHexProperty); }
             set
             {
-                SetValue(MyFingerprintProperty, value);
+                SetValue(FingerprintHexProperty, value);
                 showFingerprint();
             }
         }
-        public static readonly DependencyProperty MyFingerprintProperty = DependencyProperty.Register(nameof(MyFingerprint), typeof(Fingerprint), typeof(OmemoFingerprintControl), new PropertyMetadata(null));
+        public static readonly DependencyProperty FingerprintHexProperty = DependencyProperty.Register(nameof(FingerprintHex), typeof(string), typeof(OmemoFingerprintControl), new PropertyMetadata(null));
 
         #endregion
         //--------------------------------------------------------Constructor:----------------------------------------------------------------\\
         #region --Constructors--
-        /// <summary>
-        /// Basic Constructor
-        /// </summary>
-        /// <history>
-        /// 08/08/2018 Created [Fabian Sauter]
-        /// </history>
         public OmemoFingerprintControl()
         {
             this.InitializeComponent();
         }
 
         #endregion
-        //--------------------------------------------------------Set-, Get- Methods:---------------------------------------------------------\\
-        #region --Set-, Get- Methods--
-
-
-        #endregion
         //--------------------------------------------------------Misc Methods:---------------------------------------------------------------\\
-        #region --Misc Methods (Public)--
-
-
-        #endregion
-
         #region --Misc Methods (Private)--
         private void showFingerprint()
         {
-            if (MyFingerprint != null)
+            if (!string.IsNullOrEmpty(FingerprintHex))
             {
-                string displayFingerprint = MyFingerprint.getDisplayableFingerprint().getDisplayText();
-                fingerprint_tbx.Text = Regex.Replace(displayFingerprint, ".{4}", "$0 ");
-                fingerprintQRCode_qrcc.QRCodeText = Encoding.ASCII.GetString(MyFingerprint.getScannableFingerprint().getSerialized());
+                // Group into blocks of 8 like other OMEMO clients:
+                fingerprint_tbx.Text = Regex.Replace(FingerprintHex, ".{8}", "$0 ").Trim();
+                fingerprintQRCode_qrcc.QRCodeText = FingerprintHex;
                 cpyFingerprint_btn.IsEnabled = true;
             }
             else
@@ -67,18 +53,13 @@ namespace UWP_XMPP_Client.Controls.Omemo
         }
 
         #endregion
-
-        #region --Misc Methods (Protected)--
-
-
-        #endregion
         //--------------------------------------------------------Events:---------------------------------------------------------------------\\
         #region --Events--
         private void cpyFingerprint_btn_Click(object sender, RoutedEventArgs e)
         {
-            if (MyFingerprint != null)
+            if (!string.IsNullOrEmpty(FingerprintHex))
             {
-                UiUtils.addTextToClipboard(MyFingerprint.getDisplayableFingerprint().getDisplayText());
+                UiUtils.addTextToClipboard(FingerprintHex);
             }
         }
 

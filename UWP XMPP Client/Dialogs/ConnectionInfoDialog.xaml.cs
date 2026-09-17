@@ -220,7 +220,7 @@ namespace UWP_XMPP_Client.Dialogs
                 return;
             }
 
-            omemoFingerprint_ofc.MyFingerprint = Client?.getXMPPAccount().getOmemoFingerprint();
+            omemoFingerprint_ofc.FingerprintHex = Client?.getXMPPAccount().getOmemoFingerprintHex();
             if (Client != null)
             {
                 if (!Client.getXMPPAccount().hasOmemoKeys())
