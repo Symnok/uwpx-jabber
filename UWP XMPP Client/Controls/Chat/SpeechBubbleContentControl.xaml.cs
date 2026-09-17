@@ -5,6 +5,7 @@ using Data_Manager2.Classes.Events;
 using System;
 using System.Threading.Tasks;
 using UWP_XMPP_Client.Classes;
+using XMPP_API.Classes.Crypto;
 using Windows.Storage;
 using Windows.UI.Popups;
 using Windows.UI.Xaml;
@@ -77,6 +78,8 @@ namespace UWP_XMPP_Client.Controls.Chat
 
         #endregion
 
+        private bool isEncryptedFile;
+
         #region --Misc Methods (Private)--
         /// <summary>
         /// Updates all controls with the proper content.
@@ -124,7 +127,18 @@ namespace UWP_XMPP_Client.Controls.Chat
                 else
                 {
                     image_img.Visibility = Visibility.Collapsed;
-                    Message = ChatMessage.message ?? "";
+                    // XEP-0454 encrypted file that is not a displayable image (video, document, ...):
+                    isEncryptedFile = OmemoMediaHelper.isAesGcmUrl(ChatMessage.message);
+                    if (isEncryptedFile)
+                    {
+                        Message = "[Encrypted file] " + OmemoMediaHelper.getFileName(ChatMessage.message) + " (hold to open)";
+                        message_tbx.IsTextSelectionEnabled = false;
+                    }
+                    else
+                    {
+                        Message = ChatMessage.message ?? "";
+                        message_tbx.IsTextSelectionEnabled = true;
+                    }
                     message_tbx.Visibility = Visibility.Visible;
                 }
                 switch (ChatMessage.state)
@@ -329,12 +343,22 @@ namespace UWP_XMPP_Client.Controls.Chat
 
         private void StackPanel_RightTapped(object sender, Windows.UI.Xaml.Input.RightTappedRoutedEventArgs e)
         {
-            if (ChatMessage.isImage)
+            if (ChatMessage.isImage || isEncryptedFile)
             {
+                openImage_mfo.Visibility = ChatMessage.isImage ? Visibility.Visible : Visibility.Collapsed;
+                redownloadImage_mfo.Visibility = ChatMessage.isImage ? Visibility.Visible : Visibility.Collapsed;
+                openLink_mfo.Visibility = isEncryptedFile ? Visibility.Collapsed : Visibility.Visible;
+                openEncryptedFile_mfo.Visibility = isEncryptedFile ? Visibility.Visible : Visibility.Collapsed;
+
                 StackPanel stackPanel = (StackPanel)sender;
                 menuFlyout.ShowAt(stackPanel, e.GetPosition(stackPanel));
                 var a = ((FrameworkElement)e.OriginalSource).DataContext;
             }
+        }
+
+        private async void openEncryptedFile_mfo_Click(object sender, RoutedEventArgs e)
+        {
+            await EncryptedFileHelper.openAsync(ChatMessage.message);
         }
 
         private async void image_img_Tapped(object sender, Windows.UI.Xaml.Input.TappedRoutedEventArgs e)

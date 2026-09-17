@@ -96,6 +96,26 @@ namespace XMPP_API.Classes.Crypto
         }
 
 
+        /// <summary>
+        /// Extracts the file name (last path segment, without the key fragment) from an aesgcm:// or http(s) URL.
+        /// </summary>
+        public static string getFileName(string url)
+        {
+            if (string.IsNullOrEmpty(url))
+            {
+                return "file";
+            }
+            string u = url.Trim();
+            int hash = u.IndexOf('#');
+            if (hash >= 0)
+            {
+                u = u.Substring(0, hash);
+            }
+            int slash = u.LastIndexOf('/');
+            string name = slash >= 0 ? u.Substring(slash + 1) : u;
+            return string.IsNullOrEmpty(name) ? "file" : name;
+        }
+
         public static bool isAesGcmImageUrl(string msg)
         {
             if (!isAesGcmUrl(msg))

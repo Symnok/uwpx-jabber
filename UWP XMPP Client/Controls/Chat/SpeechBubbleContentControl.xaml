@@ -38,6 +38,10 @@
                         <MenuFlyoutItem x:Name="openLink_mfo"
                                         Click="openLink_mfo_Click"
                                         Text="Open link"/>
+                        <MenuFlyoutItem x:Name="openEncryptedFile_mfo"
+                                        Click="openEncryptedFile_mfo_Click"
+                                        Visibility="Collapsed"
+                                        Text="Open file"/>
                     </MenuFlyout.Items>
                 </MenuFlyout>
             </StackPanel.Resources>
