@@ -1,4 +1,4 @@
-using Logging;
+﻿using Logging;
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
@@ -7,6 +7,8 @@ using Windows.Storage.FileProperties;
 using Windows.Storage.Streams;
 using Windows.Web.Http;
 using Windows.Web.Http.Headers;
+using Windows.Security.Cryptography;
+using XMPP_API.Classes.Crypto;
 using XMPP_API.Classes;
 using XMPP_API.Classes.Network;
 using XMPP_API.Classes.Network.XML.Messages;
@@ -48,6 +50,16 @@ namespace UWP_XMPP_Client.Classes
         /// </summary>
         public static async Task<FileUploadResult> uploadAsync(XMPPClient client, StorageFile file)
         {
+            return await uploadAsync(client, file, false);
+        }
+
+        /// <summary>
+        /// Uploads the file and returns the URL to send. When <paramref name="encrypt"/> is set the file
+        /// is AES-256-GCM encrypted before upload and an 'aesgcm://' URL (XEP-0454) is returned, so it can
+        /// be shared inside an OMEMO chat without exposing the file on the server.
+        /// </summary>
+        public static async Task<FileUploadResult> uploadAsync(XMPPClient client, StorageFile file, bool encrypt)
+        {
             FileUploadResult result = new FileUploadResult();
             if (client == null || file == null)
             {
@@ -64,22 +76,40 @@ namespace UWP_XMPP_Client.Classes
                     return result;
                 }
 
-                BasicProperties properties = await file.GetBasicPropertiesAsync();
-                HTTPUploadSlot slot = await requestSlotAsync(client, service, file, properties.Size);
+                byte[] encryptedBytes = null;
+                byte[] key = null;
+                byte[] iv = null;
+                ulong size;
+                if (encrypt)
+                {
+                    IBuffer plainBuffer = await FileIO.ReadBufferAsync(file);
+                    CryptographicBuffer.CopyToByteArray(plainBuffer, out byte[] plain);
+                    encryptedBytes = OmemoMediaHelper.encrypt(plain, out key, out iv);
+                    size = (ulong)encryptedBytes.Length;
+                }
+                else
+                {
+                    BasicProperties properties = await file.GetBasicPropertiesAsync();
+                    size = properties.Size;
+                }
+
+                HTTPUploadSlot slot = await requestSlotAsync(client, service, file, size);
                 if (slot == null)
                 {
                     result.error = "The server refused the upload. The file may be too large.";
                     return result;
                 }
 
-                string uploadError = await putAsync(slot, file);
+                string uploadError = encrypt
+                    ? await putBytesAsync(slot, encryptedBytes, file.ContentType)
+                    : await putAsync(slot, file);
                 if (uploadError != null)
                 {
                     result.error = uploadError;
                     return result;
                 }
 
-                result.url = slot.URL_GET;
+                result.url = encrypt ? OmemoMediaHelper.buildAesGcmUrl(slot.URL_GET, iv, key) : slot.URL_GET;
                 return result;
             }
             catch (Exception ex)
@@ -249,6 +279,49 @@ namespace UWP_XMPP_Client.Classes
             {
                 helper.Dispose();
             }
+        }
+
+        private static async Task<string> putBytesAsync(HTTPUploadSlot slot, byte[] bytes, string contentType)
+        {
+            if (!Uri.TryCreate(slot.URL_PUT, UriKind.Absolute, out Uri target))
+            {
+                return "The server returned an unusable upload address.";
+            }
+
+            using (HttpClient httpClient = new HttpClient())
+            {
+                foreach (KeyValuePair<string, string> header in slot.HEADERS)
+                {
+                    try
+                    {
+                        httpClient.DefaultRequestHeaders.Append(header.Key, header.Value);
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Warn("Skipping upload header " + header.Key + ": " + ex.Message);
+                    }
+                }
+
+                HttpBufferContent content = new HttpBufferContent(CryptographicBuffer.CreateFromByteArray(bytes));
+                if (!string.IsNullOrEmpty(contentType))
+                {
+                    try
+                    {
+                        content.Headers.ContentType = new HttpMediaTypeHeaderValue(contentType);
+                    }
+                    catch (Exception)
+                    {
+                        // An odd content type is not worth failing the upload over.
+                    }
+                }
+
+                HttpResponseMessage response = await httpClient.PutAsync(target, content);
+                if (!response.IsSuccessStatusCode)
+                {
+                    return "Upload rejected by the server: " + (int)response.StatusCode + ' ' + response.ReasonPhrase;
+                }
+            }
+            return null;
         }
 
         private static async Task<string> putAsync(HTTPUploadSlot slot, StorageFile file)

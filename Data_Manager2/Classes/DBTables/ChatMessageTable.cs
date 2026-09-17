@@ -2,6 +2,7 @@
 using System;
 using System.Text.RegularExpressions;
 using XMPP_API.Classes;
+using XMPP_API.Classes.Crypto;
 using XMPP_API.Classes.Network.XML.Messages;
 using XMPP_API.Classes.Network.XML.Messages.XEP_0384;
 
@@ -122,7 +123,12 @@ namespace Data_Manager2.Classes.DBTables
         /// <returns>Is image url?</returns>
         private bool isMessageAnImageUrl(string msg)
         {
-            return msg != null && IMAGE_URL_REGEX.IsMatch(msg.ToLowerInvariant());
+            if (msg == null)
+            {
+                return false;
+            }
+            // XEP-0454 (OMEMO Media Sharing) encrypted image, or a plain image URL:
+            return OmemoMediaHelper.isAesGcmImageUrl(msg) || IMAGE_URL_REGEX.IsMatch(msg.ToLowerInvariant());
         }
 
         /// <summary>

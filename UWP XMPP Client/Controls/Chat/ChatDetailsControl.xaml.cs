@@ -464,7 +464,8 @@ namespace UWP_XMPP_Client.Controls.Chat
             loading_ldng.IsLoading = true;
             try
             {
-                FileUploadResult result = await FileUploadHelper.uploadAsync(Client, file);
+                bool encryptFile = Chat.omemoEnabled && Chat.chatType == ChatType.CHAT;
+                FileUploadResult result = await FileUploadHelper.uploadAsync(Client, file, encryptFile);
                 if (result.error != null)
                 {
                     TextDialog dialog = new TextDialog(result.error, "Unable to send the file");
@@ -498,11 +499,19 @@ namespace UWP_XMPP_Client.Controls.Chat
                 return;
             }
 
+            bool toEncrypt = false;
             MessageMessage sendMessage;
             if (Chat.chatType == ChatType.MUC && MUCInfo != null)
             {
                 sendMessage = new MessageMessage(Client.getXMPPAccount().getIdAndDomain(),
                     Chat.chatJabberId, url, getChatType(), MUCInfo.nickname, false);
+            }
+            else if (Chat.omemoEnabled)
+            {
+                // The file was AES-256-GCM encrypted (XEP-0454) and the aesgcm:// link is sent over OMEMO:
+                sendMessage = new OmemoMessageMessage(Client.getXMPPAccount().getIdAndDomain(),
+                    Chat.chatJabberId, url, getChatType(), true);
+                toEncrypt = true;
             }
             else
             {
@@ -512,7 +521,7 @@ namespace UWP_XMPP_Client.Controls.Chat
 
             ChatMessageTable sendMessageTable = new ChatMessageTable(sendMessage, Chat)
             {
-                state = MessageState.SENDING
+                state = toEncrypt ? MessageState.TO_ENCRYPT : MessageState.SENDING
             };
             sendMessage.chatMessageId = sendMessageTable.id;
 
@@ -524,7 +533,14 @@ namespace UWP_XMPP_Client.Controls.Chat
                 ChatDBManager.INSTANCE.setChat(chatCpy, false, true);
             });
 
-            Client.sendMessageAsync(sendMessage).ConfigureAwait(false);
+            if (sendMessage is OmemoMessageMessage omemoMsg)
+            {
+                Client.sendOmemoMessage(omemoMsg, Chat.chatJabberId, Client.getXMPPAccount().getIdAndDomain());
+            }
+            else
+            {
+                Client.sendMessageAsync(sendMessage).ConfigureAwait(false);
+            }
         }
 
         private void showBackgroundForViewState(MasterDetailsViewState state)

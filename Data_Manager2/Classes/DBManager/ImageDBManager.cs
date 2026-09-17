@@ -8,6 +8,7 @@ using System.Net;
 using System.Threading.Tasks;
 using Thread_Save_Components.Classes.SQLite;
 using Windows.Storage;
+using XMPP_API.Classes.Crypto;
 using Windows.Storage.Search;
 
 namespace Data_Manager2.Classes.DBManager
@@ -280,6 +281,11 @@ namespace Data_Manager2.Classes.DBManager
         /// <returns>Returns null if it fails, else the local path.</returns>
         private async Task<string> downloadImageAsync(ImageTable img, string url, string name)
         {
+            // XEP-0454 (OMEMO Media Sharing): download the ciphertext, AES-256-GCM decrypt, store the image:
+            if (OmemoMediaHelper.isAesGcmUrl(url))
+            {
+                return await downloadEncryptedImageAsync(img, url, name);
+            }
             Logger.Info("Started downloading image <" + name + "> from: " + url);
             HttpWebRequest request = (HttpWebRequest)WebRequest.Create(url);
             HttpWebResponse response = (HttpWebResponse)await request.GetResponseAsync();
@@ -345,6 +351,70 @@ namespace Data_Manager2.Classes.DBManager
             return lastProgressUpdatePercent;
         }
 
+        /// <summary>
+        /// Downloads an XEP-0454 (aesgcm://) encrypted image, decrypts it with AES-256-GCM and stores it.
+        /// </summary>
+        private async Task<string> downloadEncryptedImageAsync(ImageTable img, string url, string name)
+        {
+            if (!OmemoMediaHelper.tryParse(url, out string downloadUrl, out byte[] key, out byte[] iv))
+            {
+                img.errorMessage = "Invalid encrypted media link.";
+                update(img);
+                return null;
+            }
+            Logger.Info("Started downloading encrypted image <" + name + "> from: " + downloadUrl);
+            HttpWebRequest request = (HttpWebRequest)WebRequest.Create(downloadUrl);
+            HttpWebResponse response = (HttpWebResponse)await request.GetResponseAsync();
+            if (response.StatusCode != HttpStatusCode.OK &&
+                response.StatusCode != HttpStatusCode.Moved &&
+                response.StatusCode != HttpStatusCode.Redirect)
+            {
+                img.errorMessage = "Status code check failed: " + response.StatusCode + " (" + response.StatusDescription + ')';
+                update(img);
+                Logger.Error("Unable to download encrypted image <" + name + "> from: " + downloadUrl + " Status code: " + response.StatusCode);
+                return null;
+            }
+
+            byte[] cipher;
+            long bytesReadTotal = 0;
+            double lastProgressUpdatePercent = 0;
+            using (Stream inputStream = response.GetResponseStream())
+            using (MemoryStream ms = new MemoryStream())
+            {
+                byte[] buffer = new byte[4096];
+                int bytesRead;
+                do
+                {
+                    bytesRead = await inputStream.ReadAsync(buffer, 0, buffer.Length);
+                    if (bytesRead > 0)
+                    {
+                        ms.Write(buffer, 0, bytesRead);
+                    }
+                    bytesReadTotal += bytesRead;
+                    lastProgressUpdatePercent = updateProgress(img, response.ContentLength, bytesReadTotal, lastProgressUpdatePercent);
+                } while (bytesRead != 0);
+                cipher = ms.ToArray();
+            }
+
+            byte[] plain;
+            try
+            {
+                plain = OmemoMediaHelper.decrypt(cipher, key, iv);
+            }
+            catch (Exception e)
+            {
+                img.errorMessage = "Failed to decrypt the image.";
+                update(img);
+                Logger.Error("Failed to decrypt encrypted image <" + name + ">: " + e.Message);
+                return null;
+            }
+
+            StorageFile f = await createImageStorageFileAsync(name);
+            await FileIO.WriteBytesAsync(f, plain);
+            Logger.Info("Finished downloading encrypted image <" + name + "> from: " + downloadUrl);
+            return f.Path;
+        }
+
         private async Task<StorageFile> createImageStorageFileAsync(string name)
         {
             StorageFolder f = await getCachedImagesFolderAsync();
@@ -358,9 +428,15 @@ namespace Data_Manager2.Classes.DBManager
         /// <returns>Returns an unique file name.</returns>
         private string createUniqueFileName(string url)
         {
+            // For XEP-0454 aesgcm URLs drop the '#<key>' fragment before deriving the extension:
+            int hash = url.IndexOf('#');
+            if (hash >= 0)
+            {
+                url = url.Substring(0, hash);
+            }
             string name = DateTime.Now.ToString("dd.MM.yyyy_HH.mm.ss.ffff");
             int index = url.LastIndexOf('.');
-            string ending = url.Substring(index, url.Length - index);
+            string ending = index >= 0 ? url.Substring(index, url.Length - index) : ".jpg";
             return name + ending;
         }
 

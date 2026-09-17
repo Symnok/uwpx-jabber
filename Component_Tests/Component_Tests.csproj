@@ -99,6 +99,7 @@
     <Compile Include="Classes\Crypto\Test_Aes128GcmCpp.cs" />
     <Compile Include="Classes\Crypto\Test_CryptoUtils.cs" />
     <Compile Include="Classes\Crypto\Test_OmemoMessage.cs" />
+    <Compile Include="Classes\Crypto\Test_OmemoMediaHelper.cs" />
     <Compile Include="Classes\Misc\Test_DateTimeParserHelper.cs" />
     <Compile Include="Classes\XmppMessages\Test_MessageParser2.cs" />
     <Compile Include="Classes\XmppMessages\Test_EntityCapabilities.cs" />
