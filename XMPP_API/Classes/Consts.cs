@@ -87,5 +87,11 @@ namespace XMPP_API.Classes
         public const string XML_XEP_0334_NAMESPACE = "urn:xmpp:hints";
         // XEP-0115 (Entity Capabilities):
         public const string XML_XEP_0115_NAMESPACE = "http://jabber.org/protocol/caps";
+        // XEP-0444 (Message Reactions):
+        public const string XML_XEP_0444_NAMESPACE = "urn:xmpp:reactions:0";
+        // XEP-0461 (Message Replies):
+        public const string XML_XEP_0461_NAMESPACE = "urn:xmpp:reply:0";
+        // XEP-0428 (Fallback Indication):
+        public const string XML_XEP_0428_NAMESPACE = "urn:xmpp:fallback:0";
     }
 }

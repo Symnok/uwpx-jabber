@@ -314,6 +314,55 @@ namespace UWP_XMPP_Client.Controls.Chat
             });
         }
 
+        /// <summary>
+        /// Starts a reply to the given message: prefills the compose box with the
+        /// original text quoted (XEP-0461 "&gt; " fallback style) and puts the cursor
+        /// after it so the user can type their answer.
+        /// </summary>
+        public void startReply(ChatMessageTable msg)
+        {
+            if (msg == null)
+            {
+                return;
+            }
+
+            string original = msg.message ?? "";
+            System.Text.StringBuilder sb = new System.Text.StringBuilder();
+            string[] lines = original.Replace("\r\n", "\n").Split('\n');
+            foreach (string line in lines)
+            {
+                sb.Append("> ").Append(line).Append('\n');
+            }
+            sb.Append('\n');
+
+            // Prepend the quote, keep anything already typed after it.
+            string existing = message_tbx.Text ?? "";
+            message_tbx.Text = sb.ToString() + existing;
+            message_tbx.Focus(FocusState.Programmatic);
+            message_tbx.SelectionStart = message_tbx.Text.Length;
+            message_tbx.SelectionLength = 0;
+        }
+
+        /// <summary>Deletes a message locally: from the database and from the view.</summary>
+        public void deleteMessage(ChatMessageTable msg)
+        {
+            if (msg == null)
+            {
+                return;
+            }
+
+            ChatDBManager.INSTANCE.deleteChatMessage(msg);
+            for (int i = 0; i < CHAT_MESSAGES.Count; i++)
+            {
+                if (CHAT_MESSAGES[i]?.message != null &&
+                    string.Equals(CHAT_MESSAGES[i].message.id, msg.id))
+                {
+                    CHAT_MESSAGES.RemoveAt(i);
+                    break;
+                }
+            }
+        }
+
         private void sendMessage()
         {
             if (!string.IsNullOrWhiteSpace(message_tbx.Text))

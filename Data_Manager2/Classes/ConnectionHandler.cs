@@ -695,7 +695,9 @@ namespace Data_Manager2.Classes
             ChatDBManager.INSTANCE.setChatMessage(message, !doesMessageExist, doesMessageExist && !isMUCMessage);
 
             // Show toast:
-            if (!doesMessageExist && !chat.muted)
+            // Reactions (XEP-0444) are stored above so they still appear in the chat,
+            // but they must not raise a notification - in a 1:1 chat or a MUC.
+            if (!doesMessageExist && !chat.muted && !msg.IsReaction())
             {
                 Task.Run(() =>
                 {

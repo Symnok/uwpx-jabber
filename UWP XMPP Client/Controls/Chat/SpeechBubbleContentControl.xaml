@@ -42,6 +42,16 @@
                                         Click="openEncryptedFile_mfo_Click"
                                         Visibility="Collapsed"
                                         Text="Open file"/>
+                        <MenuFlyoutSeparator x:Name="messageActions_sep"/>
+                        <MenuFlyoutItem x:Name="copyText_mfo"
+                                        Click="copyText_mfo_Click"
+                                        Text="Copy"/>
+                        <MenuFlyoutItem x:Name="reply_mfo"
+                                        Click="reply_mfo_Click"
+                                        Text="Reply"/>
+                        <MenuFlyoutItem x:Name="deleteMessage_mfo"
+                                        Click="deleteMessage_mfo_Click"
+                                        Text="Delete message"/>
                     </MenuFlyout.Items>
                 </MenuFlyout>
             </StackPanel.Resources>
@@ -98,7 +108,7 @@
             <TextBlock x:Name="message_tbx"
                        HorizontalAlignment="Center"
                        extensions:TextBlockChatTextFormatExtension.FormattedText="{x:Bind Message, Mode=OneWay}"
-                       IsTextSelectionEnabled="True"
+                       IsTextSelectionEnabled="False"
                        TextWrapping="Wrap"/>
             <Grid Margin="0,5,0,0"
                   HorizontalAlignment="Right">

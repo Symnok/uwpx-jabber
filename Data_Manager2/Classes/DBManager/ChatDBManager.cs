@@ -205,6 +205,18 @@ namespace Data_Manager2.Classes.DBManager
             dB.Execute("DELETE FROM " + DBTableConsts.CHAT_MESSAGE_TABLE + " WHERE chatId = ?;", chatId);
         }
 
+        /// <summary>
+        /// Deletes a single chat message locally (removes it from this device only).
+        /// </summary>
+        public void deleteChatMessage(ChatMessageTable msg)
+        {
+            if (msg == null)
+            {
+                return;
+            }
+            dB.Execute("DELETE FROM " + DBTableConsts.CHAT_MESSAGE_TABLE + " WHERE id = ?;", msg.id);
+        }
+
         public void deleteAllChatsForAccount(string userAccountId)
         {
             dB.Execute("DELETE FROM " + DBTableConsts.CHAT_TABLE + " WHERE userAccountId = ?;", userAccountId);

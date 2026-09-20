@@ -22,7 +22,7 @@
     <AppxAutoIncrementPackageRevision>True</AppxAutoIncrementPackageRevision>
     <AppxBundle>Never</AppxBundle>
     <AppxBundlePlatforms>arm</AppxBundlePlatforms>
-    <PackageCertificateThumbprint>B0EB6780636BC6C74687459DB9DA9034E1BFD141</PackageCertificateThumbprint>
+    <PackageCertificateThumbprint>EA6BED71FC19E26A7CFCB2097531DE9E73937EA6</PackageCertificateThumbprint>
     <GenerateAppInstallerFile>False</GenerateAppInstallerFile>
     <UapAppxPackageBuildMode>SideloadOnly</UapAppxPackageBuildMode>
     <AppInstallerUpdateFrequency>1</AppInstallerUpdateFrequency>

@@ -18,6 +18,12 @@ namespace XMPP_API.Classes.Network.XML.Messages
         public string chatMessageId;
         protected bool includeBody;
 
+        // XEP-0444 (Message Reactions) / XEP-0461 (Message Replies): set while parsing
+        // an incoming stanza so a reaction can be shown in the chat but skipped for
+        // notifications. See IsReaction().
+        public bool HAS_REACTIONS_ELEMENT { get; private set; }
+        public bool HAS_REPLY_ELEMENT { get; private set; }
+
         public const string TYPE_CHAT = "chat";
         public const string TYPE_GROUPCHAT = "groupchat";
         public const string TYPE_ERROR = "error";
@@ -101,6 +107,14 @@ namespace XMPP_API.Classes.Network.XML.Messages
                 MESSAGE = body.InnerText;
             }
 
+            // XEP-0444 (Message Reactions) and XEP-0461 (Message Replies): note whether
+            // the stanza carries these so a reaction can be displayed but not notified.
+            // A reaction reaches this client as a reply that quotes the original message
+            // with the reaction emoji as the body text; modern senders also add a
+            // <reactions/> element. Both markers live on the raw stanza node.
+            HAS_REACTIONS_ELEMENT = XMLUtils.getChildNode(node, "reactions", Consts.XML_XMLNS, Consts.XML_XEP_0444_NAMESPACE) != null;
+            HAS_REPLY_ELEMENT = XMLUtils.getChildNode(node, "reply", Consts.XML_XMLNS, Consts.XML_XEP_0461_NAMESPACE) != null;
+
             // XEP-0203 (Delayed Delivery):
             XmlNode delayNode = XMLUtils.getChildNode(node, "delay", Consts.XML_XMLNS, Consts.XML_XEP_0203_NAMESPACE);
             if (delayNode != null)
@@ -128,6 +142,97 @@ namespace XMPP_API.Classes.Network.XML.Messages
         public DateTime getDelay()
         {
             return delay;
+        }
+
+        /// <summary>
+        /// True when this message is a reaction to another message (XEP-0444), so it
+        /// should be shown in the chat but must NOT raise a notification.
+        ///
+        /// A reaction arrives as a reply that quotes the original message with the
+        /// reaction emoji as its body text. It is treated as a reaction when either:
+        ///   - the stanza carries a &lt;reactions/&gt; element (XEP-0444), or
+        ///   - it is a reply / contains a quote and the remaining body (after removing
+        ///     the quoted lines) is nothing but emoji.
+        /// This also covers a reaction sent onto a message that was itself only a
+        /// reaction, since each such message matches on its own.
+        /// </summary>
+        public bool IsReaction()
+        {
+            if (HAS_REACTIONS_ELEMENT)
+            {
+                return true;
+            }
+
+            string content = StripQuoteLines(MESSAGE);
+            if (string.IsNullOrEmpty(content))
+            {
+                return false;
+            }
+            return (HAS_REPLY_ELEMENT || HasQuoteLines(MESSAGE)) && IsEmojiOnly(content);
+        }
+
+        /// <summary>True when any line of the body is an XEP-0461 fallback quote ("&gt; ...").</summary>
+        private static bool HasQuoteLines(string message)
+        {
+            if (string.IsNullOrEmpty(message))
+            {
+                return false;
+            }
+            string[] lines = message.Replace("\r\n", "\n").Split('\n');
+            foreach (string line in lines)
+            {
+                if (line.TrimStart().StartsWith(">"))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        /// <summary>The body with XEP-0461 quote lines ("&gt; ...") removed, trimmed.</summary>
+        private static string StripQuoteLines(string message)
+        {
+            if (string.IsNullOrEmpty(message))
+            {
+                return "";
+            }
+            string[] lines = message.Replace("\r\n", "\n").Split('\n');
+            System.Text.StringBuilder sb = new System.Text.StringBuilder();
+            foreach (string line in lines)
+            {
+                if (line.TrimStart().StartsWith(">"))
+                {
+                    continue;
+                }
+                if (sb.Length > 0)
+                {
+                    sb.Append('\n');
+                }
+                sb.Append(line);
+            }
+            return sb.ToString().Trim();
+        }
+
+        /// <summary>
+        /// True when the text has at least one visible character and none of them are
+        /// letters or digits - i.e. it is only emoji / symbols, as a reaction is.
+        /// </summary>
+        private static bool IsEmojiOnly(string text)
+        {
+            bool hasVisible = false;
+            foreach (char c in text)
+            {
+                if (char.IsWhiteSpace(c))
+                {
+                    continue;
+                }
+                hasVisible = true;
+                if (char.IsLetterOrDigit(c))
+                {
+                    return false;
+                }
+            }
+            return hasVisible;
         }
 
         #endregion

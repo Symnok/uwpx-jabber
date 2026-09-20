@@ -137,7 +137,9 @@ namespace UWP_XMPP_Client.Controls.Chat
                     else
                     {
                         Message = ChatMessage.message ?? "";
-                        message_tbx.IsTextSelectionEnabled = true;
+                        // Selection off so a long press opens our Copy/Reply/Delete menu
+                        // instead of the built-in text-selection menu.
+                        message_tbx.IsTextSelectionEnabled = false;
                     }
                     message_tbx.Visibility = Visibility.Visible;
                 }
@@ -343,16 +345,57 @@ namespace UWP_XMPP_Client.Controls.Chat
 
         private void StackPanel_RightTapped(object sender, Windows.UI.Xaml.Input.RightTappedRoutedEventArgs e)
         {
-            if (ChatMessage.isImage || isEncryptedFile)
+            if (ChatMessage == null)
             {
-                openImage_mfo.Visibility = ChatMessage.isImage ? Visibility.Visible : Visibility.Collapsed;
-                redownloadImage_mfo.Visibility = ChatMessage.isImage ? Visibility.Visible : Visibility.Collapsed;
-                openLink_mfo.Visibility = isEncryptedFile ? Visibility.Collapsed : Visibility.Visible;
-                openEncryptedFile_mfo.Visibility = isEncryptedFile ? Visibility.Visible : Visibility.Collapsed;
+                return;
+            }
 
-                StackPanel stackPanel = (StackPanel)sender;
-                menuFlyout.ShowAt(stackPanel, e.GetPosition(stackPanel));
-                var a = ((FrameworkElement)e.OriginalSource).DataContext;
+            // Image / link / encrypted-file actions only make sense for those messages.
+            bool hasUrl = ChatMessage.isImage || isEncryptedFile;
+            openImage_mfo.Visibility = ChatMessage.isImage ? Visibility.Visible : Visibility.Collapsed;
+            redownloadImage_mfo.Visibility = ChatMessage.isImage ? Visibility.Visible : Visibility.Collapsed;
+            copyLink_mfo.Visibility = hasUrl ? Visibility.Visible : Visibility.Collapsed;
+            openLink_mfo.Visibility = (hasUrl && !isEncryptedFile) ? Visibility.Visible : Visibility.Collapsed;
+            openEncryptedFile_mfo.Visibility = isEncryptedFile ? Visibility.Visible : Visibility.Collapsed;
+            messageActions_sep.Visibility = hasUrl ? Visibility.Visible : Visibility.Collapsed;
+
+            // Copy / Reply / Delete apply to every text and image message.
+            StackPanel stackPanel = (StackPanel)sender;
+            menuFlyout.ShowAt(stackPanel, e.GetPosition(stackPanel));
+        }
+
+        /// <summary>Walks up the visual tree to the hosting chat control.</summary>
+        private ChatDetailsControl findParentChatDetailsControl()
+        {
+            Windows.UI.Xaml.DependencyObject element = this;
+            while (element != null && !(element is ChatDetailsControl))
+            {
+                element = Windows.UI.Xaml.Media.VisualTreeHelper.GetParent(element);
+            }
+            return element as ChatDetailsControl;
+        }
+
+        private void copyText_mfo_Click(object sender, RoutedEventArgs e)
+        {
+            UiUtils.addTextToClipboard(ChatMessage?.message ?? "");
+        }
+
+        private void reply_mfo_Click(object sender, RoutedEventArgs e)
+        {
+            findParentChatDetailsControl()?.startReply(ChatMessage);
+        }
+
+        private async void deleteMessage_mfo_Click(object sender, RoutedEventArgs e)
+        {
+            MessageDialog dialog = new MessageDialog("Delete this message from this device?", "Delete message");
+            dialog.Commands.Add(new UICommand("Delete"));
+            dialog.Commands.Add(new UICommand("Cancel"));
+            dialog.DefaultCommandIndex = 1;
+            dialog.CancelCommandIndex = 1;
+            IUICommand result = await dialog.ShowAsync();
+            if (result != null && Equals(result.Label, "Delete"))
+            {
+                findParentChatDetailsControl()?.deleteMessage(ChatMessage);
             }
         }
 
