@@ -116,6 +116,7 @@
     <Compile Include="Classes\Crypto\Aes128GcmCpp.cs" />
     <Compile Include="Classes\Crypto\OmemoMediaHelper.cs" />
     <Compile Include="Classes\DateTimeParserHelper.cs" />
+    <Compile Include="Classes\EmojiUtils.cs" />
     <Compile Include="Classes\Events\NewPresenceMessageEventArgs.cs" />
     <Compile Include="Classes\Exceptions\XMPPGeneralException.cs" />
     <Compile Include="Classes\MUCCommandHelper.cs" />

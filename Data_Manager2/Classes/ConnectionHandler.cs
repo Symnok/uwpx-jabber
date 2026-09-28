@@ -643,6 +643,17 @@ namespace Data_Manager2.Classes
             ChatMessageTable existingMessage = ChatDBManager.INSTANCE.getChatMessageById(message.id);
             bool doesMessageExist = existingMessage != null;
 
+            // No emoji in MUCs: drop reactions and messages (or replies) that consist
+            // only of emoji, strip emoji from everything else.
+            if (isMUCMessage && !message.isImage && message.message != null)
+            {
+                if (msg.HAS_REACTIONS_ELEMENT || EmojiUtils.isEmojiOnlyMessage(message.message))
+                {
+                    return;
+                }
+                message.message = EmojiUtils.removeEmoji(message.message);
+            }
+
             if (isMUCMessage)
             {
                 MUCChatInfoTable mucInfo = MUCDBManager.INSTANCE.getMUCInfo(chat.id);

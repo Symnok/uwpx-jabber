@@ -313,7 +313,8 @@ namespace UWP_XMPP_Client.Controls.Chat
 
                         default:
                             lastChatIcon_tblck.Visibility = Visibility.Collapsed;
-                            lastChat_tblck.Text = chatMessage.message ?? "";
+                            // No emoji in MUCs:
+                            lastChat_tblck.Text = (Equals(chatMessage.type, MessageMessage.TYPE_GROUPCHAT) ? EmojiUtils.removeEmoji(chatMessage.message) : chatMessage.message) ?? "";
                             break;
                     }
                 }

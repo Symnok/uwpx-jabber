@@ -130,6 +130,29 @@ namespace UWP_XMPP_Client.Controls.Chat
             }
         }
 
+        private bool isMUC()
+        {
+            return !IsDummy && Chat != null && Chat.chatType == ChatType.MUC;
+        }
+
+        /// <summary>
+        /// No emoji in MUCs: returns false for messages that consist only of emoji
+        /// (e.g. reactions) and strips emoji from all other messages of a MUC chat.
+        /// </summary>
+        private static bool prepareMessageForDisplay(ChatMessageTable msg, ChatTable chat)
+        {
+            if (chat == null || chat.chatType != ChatType.MUC || msg == null || msg.isImage || msg.message == null)
+            {
+                return true;
+            }
+            if (EmojiUtils.isEmojiOnlyMessage(msg.message))
+            {
+                return false;
+            }
+            msg.message = EmojiUtils.removeEmoji(msg.message);
+            return true;
+        }
+
         private bool shouldSendChatState()
         {
             return !IsDummy && !Settings.getSettingBoolean(SettingsConsts.DONT_SEND_CHAT_STATE) && Chat != null && Chat.chatType == ChatType.CHAT;
@@ -231,6 +254,10 @@ namespace UWP_XMPP_Client.Controls.Chat
                         List<ChatMessageDataTemplate> msgs = new List<ChatMessageDataTemplate>();
                         foreach (ChatMessageTable msg in ChatDBManager.INSTANCE.getAllChatMessagesForChat(chatCpy.id))
                         {
+                            if (!prepareMessageForDisplay(msg, chatCpy))
+                            {
+                                continue;
+                            }
                             msgs.Add(new ChatMessageDataTemplate
                             {
                                 message = msg,
@@ -277,6 +304,12 @@ namespace UWP_XMPP_Client.Controls.Chat
                     join_mfo.Visibility = Visibility.Collapsed;
                     leave_mfo.Visibility = Visibility.Collapsed;
                 }
+
+                // No emoji in MUCs: the "Chat" input scope offers the emoji keyboard and
+                // emoji suggestions, so fall back to the plain "Default" scope there.
+                InputScope scope = new InputScope();
+                scope.Names.Add(new InputScopeName(chat.chatType == ChatType.MUC ? InputScopeNameValue.Default : InputScopeNameValue.Chat));
+                message_tbx.InputScope = scope;
 
                 omemoIndicator_tbx.Visibility = chat.omemoEnabled ? Visibility.Visible : Visibility.Collapsed;
                 omemo_tmfo.IsChecked = chat.omemoEnabled;
@@ -443,6 +476,13 @@ namespace UWP_XMPP_Client.Controls.Chat
                     bool toEncrypt = false;
                     if (Chat.chatType == ChatType.MUC && MUCInfo != null)
                     {
+                        // No emoji in MUCs:
+                        messageText = EmojiUtils.removeEmoji(messageText).TrimEnd(TRIM_CHARS).TrimStart(TRIM_CHARS);
+                        if (string.IsNullOrWhiteSpace(messageText))
+                        {
+                            message_tbx.Text = "";
+                            return;
+                        }
                         sendMessage = new MessageMessage(Client.getXMPPAccount().getIdAndDomain(), Chat.chatJabberId, messageText, getChatType(), MUCInfo.nickname, false);
                     }
                     else
@@ -680,6 +720,11 @@ namespace UWP_XMPP_Client.Controls.Chat
                         Task.Run(() => ChatDBManager.INSTANCE.markMessageAsRead(args.MESSAGE));
                     }
 
+                    if (!prepareMessageForDisplay(args.MESSAGE, Chat))
+                    {
+                        return;
+                    }
+
                     CHAT_MESSAGES.Add(new ChatMessageDataTemplate()
                     {
                         message = args.MESSAGE,
@@ -709,6 +754,19 @@ namespace UWP_XMPP_Client.Controls.Chat
 
         private void message_tbx_TextChanged(object sender, TextChangedEventArgs e)
         {
+            // No emoji in MUCs - remove them as soon as they get typed or pasted:
+            if (isMUC() && EmojiUtils.containsEmoji(message_tbx.Text))
+            {
+                string text = message_tbx.Text;
+                int selectionStart = message_tbx.SelectionStart;
+                string cleaned = EmojiUtils.removeEmoji(text);
+                int cleanedBeforeCursor = EmojiUtils.removeEmoji(text.Substring(0, Math.Min(selectionStart, text.Length))).Length;
+                message_tbx.Text = cleaned;
+                message_tbx.SelectionStart = Math.Min(cleanedBeforeCursor, cleaned.Length);
+                message_tbx.SelectionLength = 0;
+                return; // Setting Text raises TextChanged again.
+            }
+
             if (string.IsNullOrWhiteSpace(message_tbx.Text))
             {
                 send_btn.IsEnabled = false;
