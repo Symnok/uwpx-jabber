@@ -496,6 +496,14 @@ namespace UWP_XMPP_Client
 
             try
             {
+                // Diagnostics: which state does this instance see before reconnecting?
+                // (Together with the process id in the log this shows whether a second
+                // app instance runs the catch-up next to a still connected foreground one.)
+                foreach (XMPP_API.Classes.XMPPClient c in ConnectionHandler.INSTANCE.getClients())
+                {
+                    Logger.Info("Catch-up: " + c.getXMPPAccount().getIdAndDomain() + " state before connect = " + c.getConnetionState());
+                }
+
                 // Reconnect every account; incoming stanzas take the normal path
                 // and raise their usual toasts.
                 ConnectionHandler.INSTANCE.connectAll();

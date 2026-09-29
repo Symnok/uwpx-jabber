@@ -643,9 +643,10 @@ namespace Data_Manager2.Classes
             ChatMessageTable existingMessage = ChatDBManager.INSTANCE.getChatMessageById(message.id);
             bool doesMessageExist = existingMessage != null;
 
-            // No emoji in MUCs: drop reactions and messages (or replies) that consist
-            // only of emoji, strip emoji from everything else.
-            if (isMUCMessage && !message.isImage && message.message != null)
+            // No emoji in MUCs (unless enabled in the settings): drop reactions and
+            // messages (or replies) that consist only of emoji, strip emoji from
+            // everything else.
+            if (isMUCMessage && !message.isImage && message.message != null && !Settings.getSettingBoolean(SettingsConsts.SHOW_EMOJI_IN_MUC))
             {
                 if (msg.HAS_REACTIONS_ELEMENT || EmojiUtils.isEmojiOnlyMessage(message.message))
                 {
@@ -708,7 +709,9 @@ namespace Data_Manager2.Classes
             // Show toast:
             // Reactions (XEP-0444) are stored above so they still appear in the chat,
             // but they must not raise a notification - in a 1:1 chat or a MUC.
-            if (!doesMessageExist && !chat.muted && !msg.IsReaction())
+            // MUC notifications can also be muted globally in the settings.
+            bool mucMuted = isMUCMessage && Settings.getSettingBoolean(SettingsConsts.MUTE_MUC_NOTIFICATIONS);
+            if (!doesMessageExist && !chat.muted && !mucMuted && !msg.IsReaction())
             {
                 Task.Run(() =>
                 {

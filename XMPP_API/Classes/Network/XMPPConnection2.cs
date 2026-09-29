@@ -536,6 +536,21 @@ namespace XMPP_API.Classes.Network
                     }
                     streamId = oA.ID;
                 }
+                // Stream error:
+                else if (msg is StreamErrorReceivedMessage streamError)
+                {
+                    Logger.Warn("[XMPPConnection2]: Stream error for " + account.getIdAndDomain() + ": " + (streamError.CONDITION ?? "unknown") + (streamError.TEXT != null ? " - " + streamError.TEXT : ""));
+                    if (streamError.isConflict())
+                    {
+                        // Another session with the same full JID took over. Reconnecting
+                        // right away would kick that session, which then reconnects and
+                        // kicks us... Stay offline until connect() gets called again.
+                        Logger.Warn("[XMPPConnection2]: Session replaced by another connection - not reconnecting automatically.");
+                        holdConnection = false;
+                        reconnectRequested = false;
+                        await internalDisconnectAsync();
+                    }
+                }
                 // Close stream message:
                 else if (msg is CloseStreamMessage)
                 {

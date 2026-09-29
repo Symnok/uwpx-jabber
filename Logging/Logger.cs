@@ -30,6 +30,7 @@ namespace Logging
             LogManager.Configuration = new XmlLoggingConfiguration(Path.Combine(Package.Current.InstalledLocation.Path, @"Logging\NLog.config"));
             LogManager.Configuration.Variables["LogPath"] = getLogsFolderPath();
             LogManager.Configuration.Variables["LogArchivePath"] = getLogsArchivePath();
+            LogManager.Configuration.Variables["Pid"] = getProcessId();
             NLOGGER = LogManager.GetCurrentClassLogger();
         }
 
@@ -83,6 +84,23 @@ namespace Logging
         private static string getExportedLogsPath()
         {
             return Path.Combine(ApplicationData.Current.LocalFolder.Path, "LogsExport.zip");
+        }
+
+        /// <summary>
+        /// The id of the current process, written into every log line so entries of
+        /// different app instances (e.g. foreground app and a background task) sharing
+        /// the same log file can be told apart.
+        /// </summary>
+        private static string getProcessId()
+        {
+            try
+            {
+                return Windows.System.Diagnostics.ProcessDiagnosticInfo.GetForCurrentProcess().ProcessId.ToString();
+            }
+            catch (Exception)
+            {
+                return "?";
+            }
         }
 
         private static string getLogsArchivePath()

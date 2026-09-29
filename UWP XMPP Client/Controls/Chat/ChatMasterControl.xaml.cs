@@ -314,7 +314,7 @@ namespace UWP_XMPP_Client.Controls.Chat
                         default:
                             lastChatIcon_tblck.Visibility = Visibility.Collapsed;
                             // No emoji in MUCs:
-                            lastChat_tblck.Text = (Equals(chatMessage.type, MessageMessage.TYPE_GROUPCHAT) ? EmojiUtils.removeEmoji(chatMessage.message) : chatMessage.message) ?? "";
+                            lastChat_tblck.Text = (Equals(chatMessage.type, MessageMessage.TYPE_GROUPCHAT) && !Settings.getSettingBoolean(SettingsConsts.SHOW_EMOJI_IN_MUC) ? EmojiUtils.removeEmoji(chatMessage.message) : chatMessage.message) ?? "";
                             break;
                     }
                 }

@@ -30,13 +30,35 @@ namespace XMPP_API.Classes.Network.XML.DBManager
         #region --Set-, Get- Methods--
         public void setDevices(List<OmemoDeviceTable> devices, string chatJid)
         {
-            dB.BeginTransaction();
-            deleteDevicesForChat(chatJid);
-            foreach (OmemoDeviceTable device in devices)
+            // The DB can be locked by another writer ("Busy"), e.g. a second app
+            // instance. This runs on the network receive path, where an escaping
+            // exception crashes the app - so retry a few times, then log and give up
+            // (the device list gets refreshed on the next update anyway).
+            const int MAX_ATTEMPTS = 3;
+            for (int attempt = 1; ; attempt++)
             {
-                dB.InsertOrReplace(device);
+                try
+                {
+                    dB.BeginTransaction();
+                    deleteDevicesForChat(chatJid);
+                    foreach (OmemoDeviceTable device in devices)
+                    {
+                        dB.InsertOrReplace(device);
+                    }
+                    dB.Commit();
+                    return;
+                }
+                catch (Exception e)
+                {
+                    if (attempt >= MAX_ATTEMPTS)
+                    {
+                        Logging.Logger.Error("Failed to store OMEMO devices for " + chatJid + " after " + attempt + " attempts - " + e.GetType().Name + ": " + e.Message, e);
+                        return;
+                    }
+                    Logging.Logger.Warn("Storing OMEMO devices for " + chatJid + " failed (attempt " + attempt + ") - " + e.Message + ". Retrying...");
+                    System.Threading.Tasks.Task.Delay(200 * attempt).Wait();
+                }
             }
-            dB.Commit();
         }
 
         public void setDevices(OmemoDevices devices, string chatJid, string accountId)

@@ -177,6 +177,7 @@
     <Compile Include="Classes\Network\XML\Messages\Processor\SMConnection.cs" />
     <Compile Include="Classes\Network\XML\Messages\Processor\SMState.cs" />
     <Compile Include="Classes\Network\XML\Messages\StreamErrorMessage.cs" />
+    <Compile Include="Classes\Network\XML\Messages\StreamErrorReceivedMessage.cs" />
     <Compile Include="Classes\Network\XML\Messages\XEP-0004\DataForm.cs" />
     <Compile Include="Classes\Network\XML\Messages\XEP-0004\DataFormType.cs" />
     <Compile Include="Classes\Network\XML\Messages\XEP-0004\Field.cs" />

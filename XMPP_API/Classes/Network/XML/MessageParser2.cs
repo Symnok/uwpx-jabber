@@ -394,6 +394,11 @@ namespace XMPP_API.Classes.Network.XML
                         messages.Add(new StreamFeaturesMessage(n));
                         break;
 
+                    // Stream errors (e.g. <conflict/> - replaced by a new connection):
+                    case "stream:error":
+                        messages.Add(new StreamErrorReceivedMessage(n));
+                        break;
+
                     // TLS proceed:
                     case "proceed":
                         messages.Add(new ProceedAnswerMessage());

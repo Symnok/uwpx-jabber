@@ -18,6 +18,8 @@
         public const string DISABLE_DOWNLOAD_IMAGES_TO_LIBARY = "disable_download_images_to_libary";
         public const string DISABLE_CRASH_REPORTING = "disable_crash_reporting";
         public const string DISABLE_AUTO_JOIN_MUC = "disable_auto_join_muc";
+        public const string SHOW_EMOJI_IN_MUC = "show_emoji_in_muc";
+        public const string MUTE_MUC_NOTIFICATIONS = "mute_muc_notifications";
 
         public const string PUSH_CHANNEL_TOKEN_URL = "push_channel_token_url";
         public const string PUSH_CHANNEL_SEND_SUCCESS = "push_channel_send_success";

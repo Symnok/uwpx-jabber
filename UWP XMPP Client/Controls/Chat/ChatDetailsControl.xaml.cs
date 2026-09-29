@@ -130,9 +130,10 @@ namespace UWP_XMPP_Client.Controls.Chat
             }
         }
 
-        private bool isMUC()
+        /// <summary>True if this is a MUC chat and emoji are disabled for MUCs in the settings.</summary>
+        private bool isEmojiFreeMUC()
         {
-            return !IsDummy && Chat != null && Chat.chatType == ChatType.MUC;
+            return !IsDummy && Chat != null && Chat.chatType == ChatType.MUC && !Settings.getSettingBoolean(SettingsConsts.SHOW_EMOJI_IN_MUC);
         }
 
         /// <summary>
@@ -141,7 +142,7 @@ namespace UWP_XMPP_Client.Controls.Chat
         /// </summary>
         private static bool prepareMessageForDisplay(ChatMessageTable msg, ChatTable chat)
         {
-            if (chat == null || chat.chatType != ChatType.MUC || msg == null || msg.isImage || msg.message == null)
+            if (chat == null || chat.chatType != ChatType.MUC || msg == null || msg.isImage || msg.message == null || Settings.getSettingBoolean(SettingsConsts.SHOW_EMOJI_IN_MUC))
             {
                 return true;
             }
@@ -307,8 +308,9 @@ namespace UWP_XMPP_Client.Controls.Chat
 
                 // No emoji in MUCs: the "Chat" input scope offers the emoji keyboard and
                 // emoji suggestions, so fall back to the plain "Default" scope there.
+                bool noEmoji = chat.chatType == ChatType.MUC && !Settings.getSettingBoolean(SettingsConsts.SHOW_EMOJI_IN_MUC);
                 InputScope scope = new InputScope();
-                scope.Names.Add(new InputScopeName(chat.chatType == ChatType.MUC ? InputScopeNameValue.Default : InputScopeNameValue.Chat));
+                scope.Names.Add(new InputScopeName(noEmoji ? InputScopeNameValue.Default : InputScopeNameValue.Chat));
                 message_tbx.InputScope = scope;
 
                 omemoIndicator_tbx.Visibility = chat.omemoEnabled ? Visibility.Visible : Visibility.Collapsed;
@@ -477,11 +479,14 @@ namespace UWP_XMPP_Client.Controls.Chat
                     if (Chat.chatType == ChatType.MUC && MUCInfo != null)
                     {
                         // No emoji in MUCs:
-                        messageText = EmojiUtils.removeEmoji(messageText).TrimEnd(TRIM_CHARS).TrimStart(TRIM_CHARS);
-                        if (string.IsNullOrWhiteSpace(messageText))
+                        if (isEmojiFreeMUC())
                         {
-                            message_tbx.Text = "";
-                            return;
+                            messageText = EmojiUtils.removeEmoji(messageText).TrimEnd(TRIM_CHARS).TrimStart(TRIM_CHARS);
+                            if (string.IsNullOrWhiteSpace(messageText))
+                            {
+                                message_tbx.Text = "";
+                                return;
+                            }
                         }
                         sendMessage = new MessageMessage(Client.getXMPPAccount().getIdAndDomain(), Chat.chatJabberId, messageText, getChatType(), MUCInfo.nickname, false);
                     }
@@ -755,7 +760,7 @@ namespace UWP_XMPP_Client.Controls.Chat
         private void message_tbx_TextChanged(object sender, TextChangedEventArgs e)
         {
             // No emoji in MUCs - remove them as soon as they get typed or pasted:
-            if (isMUC() && EmojiUtils.containsEmoji(message_tbx.Text))
+            if (isEmojiFreeMUC() && EmojiUtils.containsEmoji(message_tbx.Text))
             {
                 string text = message_tbx.Text;
                 int selectionStart = message_tbx.SelectionStart;
