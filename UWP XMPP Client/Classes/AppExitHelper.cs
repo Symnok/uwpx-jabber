@@ -96,7 +96,10 @@ namespace UWP_XMPP_Client.Classes
             //    which then fights the next connection attempt.
             try
             {
-                Task disconnect = ConnectionHandler.INSTANCE.disconnectAllAsync();
+                // Off the UI thread: anything in the disconnect path that blocks
+                // synchronously must not freeze the UI, and the timeout below must
+                // always be able to fire.
+                Task disconnect = Task.Run(() => ConnectionHandler.INSTANCE.disconnectAllAsync());
                 if (await Task.WhenAny(disconnect, Task.Delay(DISCONNECT_TIMEOUT_MS)) != disconnect)
                 {
                     Logger.Warn("Exit: disconnecting timed out after " + DISCONNECT_TIMEOUT_MS + "ms - terminating anyway.");

@@ -434,7 +434,8 @@ namespace XMPP_API.Classes.Network
         {
             if (TCP_CONNECTION.state == ConnectionState.CONNECTED)
             {
-                await TCP_CONNECTION.sendAsync(Consts.XML_STREAM_CLOSE);
+                // Short lock timeout: if a send hangs, don't hold up the disconnect.
+                await TCP_CONNECTION.sendAsync(Consts.XML_STREAM_CLOSE, 1000);
             }
         }
 

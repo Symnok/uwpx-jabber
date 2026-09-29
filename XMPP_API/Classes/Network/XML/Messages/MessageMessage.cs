@@ -28,6 +28,9 @@ namespace XMPP_API.Classes.Network.XML.Messages
         public const string TYPE_GROUPCHAT = "groupchat";
         public const string TYPE_ERROR = "error";
 
+        // XEP-0359 (Unique and Stable Stanza IDs):
+        private const string XEP_0359_NAMESPACE = "urn:xmpp:sid:0";
+
         #endregion
         //--------------------------------------------------------Constructor:----------------------------------------------------------------\\
         #region --Constructors--
@@ -59,7 +62,7 @@ namespace XMPP_API.Classes.Network.XML.Messages
             this.chatMessageId = null;
         }
 
-        public MessageMessage(XmlNode node, CarbonCopyType ccType) : base(node.Attributes["from"]?.Value, node.Attributes["to"]?.Value, (node.Attributes["id"]?.Value) ?? getRandomId())
+        public MessageMessage(XmlNode node, CarbonCopyType ccType) : base(node.Attributes["from"]?.Value, node.Attributes["to"]?.Value, getStableId(node))
         {
             this.CC_TYPE = ccType;
             if (!node.HasChildNodes)
@@ -142,6 +145,74 @@ namespace XMPP_API.Classes.Network.XML.Messages
         public DateTime getDelay()
         {
             return delay;
+        }
+
+        /// <summary>
+        /// The id used to recognise this message again (the DB key is built from it).
+        /// Normally the stanza 'id' attribute. Some clients (e.g. Cheogram) send MUC
+        /// messages without one - a random id would then store every replay of the
+        /// message (MUC join history after each reconnect) as a new message. So fall
+        /// back to ids that stay the same across replays:
+        ///   1. XEP-0359 &lt;origin-id/&gt; set by the sender,
+        ///   2. XEP-0359 &lt;stanza-id/&gt; set by the room (by = sender bare JID) or
+        ///      by our own server (by = recipient bare JID).
+        /// Only if none exists a random id gets used.
+        /// </summary>
+        private static string getStableId(XmlNode node)
+        {
+            string id = node.Attributes["id"]?.Value;
+            if (!string.IsNullOrEmpty(id))
+            {
+                return id;
+            }
+
+            string fromBare = Utils.getBareJidFromFullJid(node.Attributes["from"]?.Value);
+            string toBare = Utils.getBareJidFromFullJid(node.Attributes["to"]?.Value);
+            string originId = null;
+            string roomStanzaId = null;
+            string ownStanzaId = null;
+            foreach (XmlNode child in node.ChildNodes)
+            {
+                if (child.NodeType != XmlNodeType.Element || !Equals(child.NamespaceURI, XEP_0359_NAMESPACE))
+                {
+                    continue;
+                }
+                string childId = child.Attributes?["id"]?.Value;
+                if (string.IsNullOrEmpty(childId))
+                {
+                    continue;
+                }
+                if (Equals(child.LocalName, "origin-id"))
+                {
+                    originId = childId;
+                }
+                else if (Equals(child.LocalName, "stanza-id"))
+                {
+                    string by = child.Attributes["by"]?.Value;
+                    if (fromBare != null && string.Equals(by, fromBare, StringComparison.OrdinalIgnoreCase))
+                    {
+                        roomStanzaId = childId;
+                    }
+                    else if (toBare != null && string.Equals(by, toBare, StringComparison.OrdinalIgnoreCase))
+                    {
+                        ownStanzaId = childId;
+                    }
+                }
+            }
+
+            if (originId != null)
+            {
+                return "origin-" + originId;
+            }
+            if (roomStanzaId != null)
+            {
+                return "sid-" + roomStanzaId;
+            }
+            if (ownStanzaId != null)
+            {
+                return "sid-" + ownStanzaId;
+            }
+            return getRandomId();
         }
 
         /// <summary>

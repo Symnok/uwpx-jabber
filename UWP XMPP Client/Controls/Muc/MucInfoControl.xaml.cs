@@ -201,7 +201,10 @@ namespace UWP_XMPP_Client.Controls.Muc
             subject_stbx.onStartSaving();
             notificationBanner_ian.Dismiss();
 
-            string from = Client.getXMPPAccount().getIdAndDomain() + '/' + MUCInfo.nickname;
+            // Must be our own full JID. The room nickname is not our resource - a
+            // 'from' of "account/nickname" makes the server kill the whole stream
+            // (<invalid-from/>), which drops every connection and room.
+            string from = Client.getXMPPAccount().getIdDomainAndResource();
             string to = Chat.chatJabberId;
             string id = Chat.id;
             MUCRoomSubjectMessage msg = new MUCRoomSubjectMessage(from, to, subject_stbx.Text);

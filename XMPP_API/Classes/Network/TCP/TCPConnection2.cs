@@ -31,6 +31,10 @@ namespace XMPP_API.Classes.Network.TCP
         /// The timeout for sending data.
         /// </summary>
         private const int SEND_TIMEOUT_MS = 1000;
+        /// <summary>
+        /// How long a send waits for the previous send to finish (default).
+        /// </summary>
+        public const int DEFAULT_WRITE_LOCK_TIMEOUT_MS = 10000;
 
         private const int MAX_CONNECTION_TRIES = 3;
 
@@ -39,14 +43,16 @@ namespace XMPP_API.Classes.Network.TCP
 
         private DataReader dataReader;
         private DataWriter dataWriter;
-        private static readonly SemaphoreSlim WRITE_SEMA = new SemaphoreSlim(1, 1);
+        // One write at a time per connection. Per instance (it used to be static and
+        // so shared by all accounts) and only ever awaited, never blocked on - a
+        // blocking Wait() on the UI thread froze the whole app while a write hung.
+        private readonly SemaphoreSlim WRITE_SEMA = new SemaphoreSlim(1, 1);
 
         /// <summary>
         /// Used to cancel connectAsync().
         /// </summary>
         private CancellationTokenSource connectingCTS;
         private CancellationTokenSource tlsUpgradeCTS;
-        private CancellationTokenSource sendCTS;
         /// <summary>
         /// Used to cancel all read operations.
         /// </summary>
@@ -165,7 +171,6 @@ namespace XMPP_API.Classes.Network.TCP
             connectingCTS?.Cancel();
             readingCTS?.Cancel();
             tlsUpgradeCTS?.Cancel();
-            sendCTS?.Cancel();
             try
             {
                 dataReader?.DetachStream();
@@ -209,91 +214,128 @@ namespace XMPP_API.Classes.Network.TCP
             }
         }
 
-        public async Task<bool> sendAsync(string s)
+        public Task<bool> sendAsync(string s)
         {
-            if (state == ConnectionState.CONNECTED)
-            {
-                try
-                {
-                    WRITE_SEMA.Wait();
-                    dataWriter.WriteString(s);
-
-                    // Sometimes dataWriter is blocking for an infinite time, so give it a timeout:
-                    sendCTS = new CancellationTokenSource(SEND_TIMEOUT_MS);
-                    await dataWriter.StoreAsync().AsTask(sendCTS.Token);
-                    await dataWriter.FlushAsync().AsTask(sendCTS.Token);
-
-                    Logger.Debug("[TCPConnection2]: Send to (" + account.serverAddress + "):" + s);
-                    return true;
-                }
-                catch (TaskCanceledException e)
-                {
-                    if (Logger.logLevel >= LogLevel.DEBUG)
-                    {
-                        Logger.Error("[TCPConnection2]: failed to send - TaskCanceledException: " + s, e);
-                    }
-                    else
-                    {
-                        Logger.Error("[TCPConnection2]: failed to send message - TaskCanceledException!", e);
-                    }
-                }
-                catch (Exception e)
-                {
-                    if (Logger.logLevel >= LogLevel.DEBUG)
-                    {
-                        Logger.Error("[TCPConnection2]: failed to send: " + s, e);
-                    }
-                    else
-                    {
-                        Logger.Error("[TCPConnection2]: failed to send message!", e);
-                    }
-                }
-                finally
-                {
-                    WRITE_SEMA.Release();
-                }
-            }
-            return false;
+            return sendAsync(s, DEFAULT_WRITE_LOCK_TIMEOUT_MS);
         }
 
-        public async Task<TCPReadResult> readAsync()
+        /// <param name="writeLockTimeoutMs">How long to wait for a previous send to finish before giving up.</param>
+        public async Task<bool> sendAsync(string s, int writeLockTimeoutMs)
         {
             if (state != ConnectionState.CONNECTED)
+            {
+                return false;
+            }
+
+            if (!await WRITE_SEMA.WaitAsync(writeLockTimeoutMs).ConfigureAwait(false))
+            {
+                Logger.Warn("[TCPConnection2]: failed to send - the previous send did not finish within " + writeLockTimeoutMs + "ms.");
+                return false;
+            }
+
+            try
+            {
+                DataWriter writer = dataWriter;
+                StreamSocket sendSocket = socket;
+                if (writer == null || state != ConnectionState.CONNECTED)
+                {
+                    return false;
+                }
+                writer.WriteString(s);
+
+                // A socket write sometimes hangs forever and ignores cancellation (a
+                // cancelled AsTask(token) only completes once the WinRT operation does).
+                // So wait with a real timeout and, if it hits, abort the socket: that is
+                // what actually unblocks the stuck write. The reader loop then sees the
+                // dead socket and triggers the normal error/reconnect handling.
+                Task storeTask = writer.StoreAsync().AsTask();
+                if (await Task.WhenAny(storeTask, Task.Delay(SEND_TIMEOUT_MS)).ConfigureAwait(false) != storeTask)
+                {
+                    observeException(storeTask);
+                    Logger.Error("[TCPConnection2]: send timed out after " + SEND_TIMEOUT_MS + "ms - aborting the socket." + (Logger.logLevel >= LogLevel.DEBUG ? " Data: " + s : ""));
+                    abortSocket(sendSocket);
+                    return false;
+                }
+                await storeTask.ConfigureAwait(false);
+
+                Task flushTask = writer.FlushAsync().AsTask();
+                if (await Task.WhenAny(flushTask, Task.Delay(SEND_TIMEOUT_MS)).ConfigureAwait(false) != flushTask)
+                {
+                    observeException(flushTask);
+                    Logger.Error("[TCPConnection2]: flush timed out after " + SEND_TIMEOUT_MS + "ms - aborting the socket.");
+                    abortSocket(sendSocket);
+                    return false;
+                }
+                await flushTask.ConfigureAwait(false);
+
+                Logger.Debug("[TCPConnection2]: Send to (" + account.serverAddress + "):" + s);
+                return true;
+            }
+            catch (Exception e)
+            {
+                if (Logger.logLevel >= LogLevel.DEBUG)
+                {
+                    Logger.Error("[TCPConnection2]: failed to send: " + s, e);
+                }
+                else
+                {
+                    Logger.Error("[TCPConnection2]: failed to send message!", e);
+                }
+                return false;
+            }
+            finally
+            {
+                WRITE_SEMA.Release();
+            }
+        }
+
+        /// <summary>
+        /// Reads the next chunk of data from the current connection (for callers that do
+        /// their own reading instead of using startReaderTask(), e.g. the push connection).
+        /// </summary>
+        public Task<TCPReadResult> readAsync()
+        {
+            return readAsync(dataReader, readingCTS?.Token ?? CancellationToken.None);
+        }
+
+        /// <summary>
+        /// Reads the next chunk of data from the given reader. Bound to one connection:
+        /// the reader and the token belong to the reader loop that calls this, so an old
+        /// loop can never read from a newer connection's socket.
+        /// </summary>
+        private async Task<TCPReadResult> readAsync(DataReader reader, CancellationToken token)
+        {
+            if (reader == null || token.IsCancellationRequested || state != ConnectionState.CONNECTED)
             {
                 return new TCPReadResult(TCPReadState.FAILURE, null);
             }
 
             StringBuilder data = new StringBuilder();
-            uint readCount = 0;
 
-            // Read the first batch:
-            readCount = await dataReader.LoadAsync(BUFFER_SIZE);
+            // Read the first batch (cancelable, so a disconnect ends a pending read):
+            uint readCount = await reader.LoadAsync(BUFFER_SIZE).AsTask(token);
 
             // To close a TCP connection, the opponent sends a 0 length message:
             if (readCount <= 0)
             {
                 return new TCPReadResult(TCPReadState.END_OF_STREAM, null);
             }
-            if (dataReader == null)
-            {
-                return new TCPReadResult(TCPReadState.FAILURE, null);
-            }
 
-            while (dataReader.UnconsumedBufferLength > 0)
+            while (reader.UnconsumedBufferLength > 0)
             {
-                data.Append(dataReader.ReadString(dataReader.UnconsumedBufferLength));
+                data.Append(reader.ReadString(reader.UnconsumedBufferLength));
             }
 
             // If there is still data left to read, continue until a timeout occurs or a close got requested:
-            while (!readingCTS.IsCancellationRequested && state == ConnectionState.CONNECTED && readCount >= BUFFER_SIZE)
+            while (!token.IsCancellationRequested && state == ConnectionState.CONNECTED && readCount >= BUFFER_SIZE)
             {
                 try
                 {
-                    readCount = await dataReader.LoadAsync(BUFFER_SIZE).AsTask(readingCTS.Token);
+                    readCount = await reader.LoadAsync(BUFFER_SIZE).AsTask(token);
 
-                    while (dataReader.UnconsumedBufferLength > 0)
+                    while (reader.UnconsumedBufferLength > 0)
                     {
-                        data.Append(dataReader.ReadString(dataReader.UnconsumedBufferLength));
+                        data.Append(reader.ReadString(reader.UnconsumedBufferLength));
                     }
                 }
                 catch (OperationCanceledException)
@@ -317,7 +359,15 @@ namespace XMPP_API.Classes.Network.TCP
                 readingCTS.Cancel();
             }
 
-            readingCTS = new CancellationTokenSource();
+            // This loop owns exactly this reader and this token. Once the connection
+            // gets torn down (token cancelled) it ends and never touches the state or
+            // the socket of a newer connection that reuses this object. Before, an old
+            // loop kept going as soon as a reconnect reached CONNECTED again, read from
+            // the new socket in parallel with the new loop and killed it.
+            CancellationTokenSource cts = new CancellationTokenSource();
+            readingCTS = cts;
+            CancellationToken token = cts.Token;
+            DataReader reader = dataReader;
 
             try
             {
@@ -328,11 +378,11 @@ namespace XMPP_API.Classes.Network.TCP
                     int errorCount = 0;
                     DateTime lastReadingFailed = DateTime.MinValue;
 
-                    while (state == ConnectionState.CONNECTED && errorCount < 3)
+                    while (!token.IsCancellationRequested && state == ConnectionState.CONNECTED && errorCount < 3)
                     {
                         try
                         {
-                            readResult = await readAsync();
+                            readResult = await readAsync(reader, token);
                             // Check if reading failed:
                             switch (readResult.STATE)
                             {
@@ -362,18 +412,32 @@ namespace XMPP_API.Classes.Network.TCP
                                     break;
 
                                 case TCPReadState.END_OF_STREAM:
-                                    Logger.Info("Socket closed because received 0-length message from: " + account.serverAddress);
-                                    disconnect();
+                                    if (!token.IsCancellationRequested)
+                                    {
+                                        Logger.Info("Socket closed because received 0-length message from: " + account.serverAddress);
+                                        disconnect();
+                                    }
                                     break;
                             }
                         }
                         catch (OperationCanceledException)
                         {
+                            if (token.IsCancellationRequested)
+                            {
+                                // Our connection got closed - just stop.
+                                break;
+                            }
                             lastConnectionError = new ConnectionError(ConnectionErrorCode.READING_CANCELED);
                             errorCount++;
+                            Logger.Warn("[TCPConnection2]: read canceled (" + errorCount + "/3).");
                         }
                         catch (Exception e)
                         {
+                            if (token.IsCancellationRequested)
+                            {
+                                // Our socket got disposed by a disconnect - just stop.
+                                break;
+                            }
                             SocketErrorStatus status = SocketErrorStatus.Unknown;
                             if (e is AggregateException aggregateException && aggregateException.InnerException != null)
                             {
@@ -408,14 +472,21 @@ namespace XMPP_API.Classes.Network.TCP
                                     errorCount++;
                                     break;
                             }
+                            Logger.Warn("[TCPConnection2]: read failed (" + (errorCount >= 3 ? "fatal" : errorCount + "/3") + ") - " + status + ": " + e.GetType().Name + ": " + e.Message);
                         }
                     }
 
+                    if (token.IsCancellationRequested)
+                    {
+                        Logger.Debug("[TCPConnection2]: reader stopped - connection closed.");
+                        return;
+                    }
                     if (errorCount >= 3)
                     {
+                        Logger.Warn("[TCPConnection2]: reader gave up - " + describe(lastConnectionError));
                         setState(ConnectionState.ERROR, lastConnectionError);
                     }
-                }, readingCTS.Token);
+                }, token);
             }
             catch (OperationCanceledException)
             {
@@ -426,6 +497,42 @@ namespace XMPP_API.Classes.Network.TCP
         #endregion
 
         #region --Misc Methods (Private)--
+        private static string describe(ConnectionError error)
+        {
+            if (error == null)
+            {
+                return "unknown";
+            }
+            return error.ERROR_CODE + (error.ERROR_CODE == ConnectionErrorCode.SOCKET_ERROR ? " (" + error.SOCKET_ERROR + ")" : "") + (string.IsNullOrEmpty(error.ERROR_MESSAGE) ? "" : ": " + error.ERROR_MESSAGE);
+        }
+
+        /// <summary>
+        /// Disposes the given socket if it is still the current one. Aborts all pending
+        /// operations on it (a hung write included); the reader loop notices and reports
+        /// the error.
+        /// </summary>
+        private void abortSocket(StreamSocket s)
+        {
+            if (s == null || !ReferenceEquals(s, socket))
+            {
+                return;
+            }
+            try
+            {
+                s.Dispose();
+            }
+            catch (Exception e)
+            {
+                Logger.Error("[TCPConnection2]: failed to abort the socket.", e);
+            }
+        }
+
+        /// <summary>Keeps an abandoned task's later exception from going unobserved.</summary>
+        private static void observeException(Task t)
+        {
+            t.ContinueWith(prev => { Exception ignored = prev.Exception; }, TaskContinuationOptions.OnlyOnFaulted);
+        }
+
         private void onConnectionError(Exception e, int connectionTry)
         {
             Logger.Error("[TCPConnection2]: " + connectionTry + " try to connect to " + account?.serverAddress + " failed:", e);
